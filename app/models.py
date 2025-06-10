@@ -13,6 +13,7 @@ class RentReminder(db.Model, TimeStamp):
     id = db.Column(db.Integer, primary_key=True)
     tenant_name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), nullable=False)
+    phone_number = db.Column(db.String(20), nullable=True)
     rent_date = db.Column(db.Date, nullable=False)  # rent start date
     last_notified = db.Column(db.Date, nullable=True)
     rent_amount = db.Column(db.Float, nullable=False)

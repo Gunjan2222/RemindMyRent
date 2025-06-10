@@ -2,12 +2,28 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime
 from app.models import db, RentReminder, RentPayment
 from app.tasks import send_rent_reminder, send_rent_notifications_task
+from app.twilio_utils import send_sms
 
 api = Blueprint('api', __name__)
 
 @api.route('/')
 def index():
     return "Server is running!"
+
+@api.route('/test_sms', methods=['POST'])
+def test_sms():
+    data = request.json
+    to = data.get('to')
+    message = data.get('message', 'This is a test SMS from RemindMyRent.')
+
+    if not to:
+        return jsonify({'error': 'Phone number is required'}), 400
+
+    sms_sid = send_sms(to, message)
+    if sms_sid:
+        return jsonify({'message': 'SMS sent successfully', 'sid': sms_sid}), 200
+    else:
+        return jsonify({'error': 'SMS failed to send'}), 500
 
 @api.route('/add_reminder', methods=['POST'])
 def add_reminder():

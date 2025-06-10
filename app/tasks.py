@@ -2,6 +2,7 @@ from app import celery, mail, db
 from app.models import RentReminder, RentPayment
 from flask_mail import Message
 from datetime import datetime, date
+from app.twilio_utils import send_sms
 import logging
 
 @celery.task(name='send_rent_reminder')
@@ -19,21 +20,51 @@ def send_rent_reminder(email, tenant_name, rent_amount, due_date):
     mail.send(msg)
     logging.warning(f"Reminder sent to {email} for {due_date}")
 
+
 @celery.task(name='send_rent_notifications_task')
 def send_rent_notifications_task():
     today = datetime.today().date()
     first_of_month = date(today.year, today.month, 1)
 
     reminders = RentReminder.query.filter(RentReminder.due_day == today.day).all()
-    logging.warning(f"Found {len(reminders)} reminders for today.")
+    logging.info(f"[{today}] Found {len(reminders)} reminders for today.")
 
     for reminder in reminders:
-        logging.warning(f"Checking reminder for tenant: {reminder.tenant_name}")
-        if not RentPayment.query.filter_by(tenant_id=reminder.id, for_month=first_of_month).first():
-            due_date = date(today.year, today.month, reminder.due_day)
-            logging.warning(f"Sending reminder to {reminder.email} for due date {due_date}")
-            send_rent_reminder.delay(reminder.email, reminder.tenant_name, reminder.rent_amount, due_date)
-            reminder.last_notified = today
+        logging.info(f"Checking tenant: {reminder.tenant_name} (ID: {reminder.id})")
+
+        # Check if payment already exists for this month
+        already_paid = RentPayment.query.filter_by(
+            tenant_id=reminder.id,
+            for_month=first_of_month
+        ).first()
+
+        if already_paid:
+            logging.info(f"Skipping {reminder.tenant_name} - already paid for this month.")
+            continue
+
+        # Compose due date
+        due_date = date(today.year, today.month, reminder.due_day)
+
+        # Send email
+        send_rent_reminder.delay(
+            reminder.email,
+            reminder.tenant_name,
+            reminder.rent_amount,
+            due_date
+        )
+        logging.info(f"Email reminder queued for {reminder.email}")
+
+        # Send SMS
+        if reminder.phone_number:
+            sms_body = (
+                f"Hi {reminder.tenant_name}, your rent of Rs{reminder.rent_amount:.2f} "
+                f"is due on {due_date.strftime('%d %b %Y')}. Please pay on time."
+            )
+            sms_sid = send_sms(reminder.phone_number, sms_body)
+            logging.info(f"SMS sent to {reminder.phone_number}, SID: {sms_sid}")
+
+        # Update last_notified
+        reminder.last_notified = today
 
     db.session.commit()
-    logging.warning("All reminders processed.")
+    logging.info("All reminders processed and committed.")

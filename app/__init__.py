@@ -1,11 +1,13 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_mail import Mail
 from celery import Celery
 from app.config import Config
 
 db = SQLAlchemy()
 mail = Mail()
+migrate = Migrate()
 celery = Celery(__name__, broker=Config.broker_url)
 
 def create_app():
@@ -14,6 +16,7 @@ def create_app():
 
     db.init_app(app)
     mail.init_app(app)
+    migrate.init_app(app, db)
 
     from app.routes import api
     app.register_blueprint(api)
