@@ -67,6 +67,20 @@
     ```bash
     flask run
 
+---
+
+## 🔌 API Endpoints
+
+✅ **Health Check**
+GET /
+
+Description: Basic endpoint to confirm the server is running.
+
+Response:
+
+```text
+Server is running!
+
 
 
 
