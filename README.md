@@ -136,6 +136,14 @@
      "error": "Tenant not found"
    }
    ```
+   
+---
+
+## Contact
+
+- *Author:* Gunjan Agarwal
+- *Email:* gunagarwal999@gmail.com  
+- *GitHub:* Gunjan2222
 
 
 
