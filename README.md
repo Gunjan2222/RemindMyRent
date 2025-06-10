@@ -33,15 +33,17 @@
    cd RemindMyRent
 
 2. **Create and activate a virtual environment**
+    ```bash
     python -m venv venv
     source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 3. **Install dependencies**
+    ```bash
     pip install -r requirements.txt
 
 4. **Configure environment variables**
     Create a .env file and add the following:
-
+    ```bash
     MAIL_USERNAME=your_email@gmail.com
     MAIL_PASSWORD=your_email_password_or_app_password
 
@@ -50,15 +52,19 @@
     TWILIO_PHONE_NUMBER=your_twilio_number
 
 5. **Run Redis server**
+    ```bash
     redis-server
 
 6. **Start Celery worker**
+    ```bash
     celery -A celery_worker.celery worker --loglevel=info
 
 7. **Start Celery beat**
+    ```bash
     celery -A celery_beat.celery beat --loglevel=info
 
 8. **Run Flask server**
+    ```bash
     flask run
 
 
