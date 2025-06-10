@@ -71,15 +71,72 @@
 
 ## 🔌 API Endpoints
 
-✅ **Health Check**
-GET /
+1. ✅ **Health Check**
+   GET /
+   
+   Description: Basic endpoint to confirm the server is running.
+   
+   Response:
+   
+   ```text
+   Server is running!
+   ```
 
-Description: Basic endpoint to confirm the server is running.
+2. ➕ **Add Rent Reminder**
+   POST /add_reminder
+   
+   Description: Add a new rent reminder for a tenant.
+   
+   Request Body (application/json):
+   
+   ```json
+   {
+     "tenant_name": "John Doe",
+     "email": "john@example.com",
+     "rent_date": "2025-07-01",
+     "rent_amount": 15000,
+     "due_day": 1,  // optional, defaults to 1
+     "frequency": "monthly"  // optional, defaults to "monthly"
+   }
+   ```
+   Success Response (201 Created):
+   
+   ```json
+   {
+     "message": "Reminder added"
+   }
+   ```
+   
+3. 💰 **Record Rent Payment**
+   POST /record_payment
+   
+   Description: Record a rent payment made by a tenant.
+   
+   Request Body (application/json):
+   
+   ```json
+   {
+     "tenant_id": 1,
+     "payment_date": "2025-07-05",
+     "for_month": "2025-07-01",
+     "amount_paid": 15000
+   }
+   ```
+   Success Response (201 Created):
+   
+   ```json
+   {
+     "message": "Payment recorded"
+   }
+   ```
+   Error Response (404 Not Found):
+   
+   ```json
+   {
+     "error": "Tenant not found"
+   }
+   ```
 
-Response:
-
-```text
-Server is running!
 
 
 
