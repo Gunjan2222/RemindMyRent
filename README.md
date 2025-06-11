@@ -6,11 +6,13 @@
 
 ## 🚀 Features
 
-- 📅 Schedule rent reminders on the 1st of every month
-- 📧 Send rent reminders via email (Gmail SMTP)
-- 📲 Send SMS notifications using Twilio
-- 🕐 Asynchronous task scheduling with Celery
-- 📦 Easily configurable and deployable
+- 🔔 Automatic rent reminders on the 1st of every month
+- 📧 Email notifications via Gmail SMTP
+- 📱 SMS notifications via Twilio
+- 🕒 Task scheduling using Celery with Redis
+- 📊 Admin panel to manage tenant data (basic)
+- 🌐 RESTful API endpoints (Flask-based)
+- 🔐 Environment variable support for secure config
 
 ---
 
@@ -51,19 +53,25 @@
     TWILIO_AUTH_TOKEN=your_twilio_token
     TWILIO_PHONE_NUMBER=your_twilio_number
 
-5. **Run Redis server**
+5. **Run database migrations**
+    ```bash
+    flask db init
+    flask db migrate
+    flask db upgrade
+
+6. **Run Redis server**
     ```bash
     redis-server
 
-6. **Start Celery worker**
+7. **Start Celery worker**
     ```bash
     celery -A celery_worker.celery worker --loglevel=info
 
-7. **Start Celery beat**
+8. **Start Celery beat**
     ```bash
     celery -A celery_beat.celery beat --loglevel=info
 
-8. **Run Flask server**
+9. **Run Flask server**
     ```bash
     flask run
 
@@ -72,7 +80,7 @@
 ## 🔌 API Endpoints
 
 1. ✅ **Health Check**
-   GET /
+   *GET /*
    
    Description: Basic endpoint to confirm the server is running.
    
@@ -83,7 +91,7 @@
    ```
 
 2. ➕ **Add Rent Reminder**
-   POST /add_reminder
+   *POST /add_reminder*
    
    Description: Add a new rent reminder for a tenant.
    
@@ -108,7 +116,7 @@
    ```
    
 3. 💰 **Record Rent Payment**
-   POST /record_payment
+   *POST /record_payment*
    
    Description: Record a rent payment made by a tenant.
    
@@ -144,6 +152,10 @@
 - *Author:* Gunjan Agarwal
 - *Email:* gunagarwal999@gmail.com  
 - *GitHub:* Gunjan2222
+
+
+
+
 
 
 

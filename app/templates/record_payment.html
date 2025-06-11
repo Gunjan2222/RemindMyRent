@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Record Payment</h2>
+<form id="recordPaymentForm">
+    <div class="mb-3">
+        <label>Tenant ID</label>
+        <input type="number" class="form-control" name="tenant_id" required>
+    </div>
+    <div class="mb-3">
+        <label>Payment Date</label>
+        <input type="date" class="form-control" name="payment_date" required>
+    </div>
+    <div class="mb-3">
+        <label>For Month</label>
+        <input type="date" class="form-control" name="for_month" required>
+    </div>
+    <div class="mb-3">
+        <label>Amount Paid</label>
+        <input type="number" class="form-control" name="amount_paid" required>
+    </div>
+    <button type="submit" class="btn btn-success">Record Payment</button>
+</form>
+<script>
+    document.getElementById("recordPaymentForm").addEventListener("submit", async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const jsonData = Object.fromEntries(formData.entries());
+
+        const response = await fetch("/record_payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(jsonData)
+        });
+        const result = await response.json();
+        alert(result.message || result.error);
+    });
+</script>
+{% endblock %}
