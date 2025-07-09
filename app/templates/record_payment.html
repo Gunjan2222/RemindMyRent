@@ -1,38 +1,23 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% block content %}
 <h2>Record Payment</h2>
-<form id="recordPaymentForm">
-    <div class="mb-3">
-        <label>Tenant ID</label>
-        <input type="number" class="form-control" name="tenant_id" required>
-    </div>
-    <div class="mb-3">
-        <label>Payment Date</label>
-        <input type="date" class="form-control" name="payment_date" required>
-    </div>
-    <div class="mb-3">
-        <label>For Month</label>
-        <input type="date" class="form-control" name="for_month" required>
-    </div>
-    <div class="mb-3">
-        <label>Amount Paid</label>
-        <input type="number" class="form-control" name="amount_paid" required>
-    </div>
-    <button type="submit" class="btn btn-success">Record Payment</button>
+<form method="POST" action="{{ url_for('api.record_payment') }}">
+  <div class="form-group">
+    <select name="tenant_id" class="form-control" required>
+      {% for reminder in reminders %}
+        <option value="{{ reminder.id }}">{{ reminder.tenant_name }} — ₹{{ reminder.rent_amount }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <input type="date" name="payment_date" class="form-control" required>
+  </div>
+  <div class="form-group">
+    <input type="date" name="for_month" class="form-control" placeholder="For Month" required>
+  </div>
+  <div class="form-group">
+    <input type="number" name="amount_paid" class="form-control" placeholder="Amount Paid" required>
+  </div>
+  <button type="submit" class="btn btn-info">Record Payment</button>
 </form>
-<script>
-    document.getElementById("recordPaymentForm").addEventListener("submit", async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const jsonData = Object.fromEntries(formData.entries());
-
-        const response = await fetch("/record_payment", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(jsonData)
-        });
-        const result = await response.json();
-        alert(result.message || result.error);
-    });
-</script>
 {% endblock %}
