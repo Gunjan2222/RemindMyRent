@@ -1,91 +1,103 @@
-from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash
+from flask import Blueprint, request, jsonify, render_template
 from datetime import datetime
-from flask_login import login_user, logout_user, login_required, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
-
 from app.models import db, RentReminder, RentPayment, User
 from app.tasks import send_rent_reminder, send_rent_notifications_task
-from app.twilio_utils import send_sms
+from app.utils.helper import AuthHelper
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+
 
 api = Blueprint('api', __name__)
 
 # ---------------------
-# 🟢 Auth routes
+# 🟢 Auth routes (API)
 # ---------------------
-@api.route('/register', methods=['GET', 'POST'])
+
+@api.route('/register', methods=['POST'])
 def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-        password = request.form['password']
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
 
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered.', 'danger')
-            return redirect(url_for('api.register'))
+    if User.query.filter_by(username=username).first():
+        return jsonify({"msg": "User already exists"}), 400
 
-        user = User(username=username, email=email)
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-        flash('Registration successful. Please login.', 'success')
-        return redirect(url_for('api.login'))
-    return render_template('register.html')
+    new_user = User(username=username, password= AuthHelper.hash_password(password))
+    db.session.add(new_user)
+    db.session.commit()
 
-@api.route('/login', methods=['GET', 'POST'])
+    return jsonify({"msg": "User registered successfully"}), 201
+
+
+@api.route('/login', methods=['POST'])
 def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
 
-        user = User.query.filter_by(email=email).first()
-        if user and user.check_password(password):
-            login_user(user)
-            return redirect(url_for('api.dashboard'))
-        else:
-            flash('Invalid email or password.', 'danger')
-            return redirect(url_for('api.login'))
-    return render_template('login.html')
+    user = User.query.filter_by(username=username).first()
+    if not user or not AuthHelper.verify_password(password, user.password):
+        return jsonify({"msg": "Invalid credentials"}), 401
 
-@api.route('/logout')
-@login_required
+    tokens = AuthHelper.generate_tokens(identity=user.id)
+    return jsonify(tokens), 200
+
+@api.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh_token():
+    identity = get_jwt_identity()
+    new_access_token = create_access_token(identity=identity)
+    return jsonify(access_token=new_access_token), 200
+
+@api.route('/logout', methods=['POST'])
+@jwt_required()
 def logout():
-    logout_user()
-    flash('Logged out successfully.', 'info')
-    return redirect(url_for('api.login'))
+    AuthHelper.blacklist_token()
+    return jsonify({"msg": "Access token revoked"}), 200
+
+@api.route('/logout-refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def logout_refresh():
+    AuthHelper.blacklist_token()
+    return jsonify({"msg": "Refresh token revoked"}), 200
 
 # ---------------------
-# 🔐 Protected routes
+# 🔐 Protected routes (JWT Required)
 # ---------------------
-@api.route('/')
-@login_required
-def dashboard():
-    reminders = RentReminder.query.filter_by(user_id=current_user.id).all()
-    return render_template('dashboard.html', reminders=reminders)
 
-@api.route('/add-reminder', methods=['GET'])
-@login_required
-def add_reminder_page():
-    return render_template('add_reminder.html')
+# @api.route('/')
+# @jwt_required()
+# def dashboard():
+#     user_id = get_jwt_identity()
+#     reminders = RentReminder.query.filter_by(user_id=user_id).all()
+#     return render_template('dashboard.html', reminders=reminders)
 
-@api.route('/record-payment', methods=['GET'])
-@login_required
-def record_payment_page():
-    reminders = RentReminder.query.filter_by(user_id=current_user.id).all()
-    return render_template('record_payment.html', reminders=reminders)
+# @api.route('/add-reminder', methods=['GET'])
+# @jwt_required()
+# def add_reminder_page():
+#     return render_template('add_reminder.html')
+
+# @api.route('/record-payment', methods=['GET'])
+# @jwt_required()
+# def record_payment_page():
+#     user_id = get_jwt_identity()
+#     reminders = RentReminder.query.filter_by(user_id=user_id).all()
+#     return render_template('record_payment.html', reminders=reminders)
 
 @api.route('/add_reminder', methods=['POST'])
-@login_required
+@jwt_required()
 def add_reminder():
-    data = request.json
+    data = request.get_json()
+    user_id = get_jwt_identity()
 
     reminder = RentReminder(
         tenant_name=data['tenant_name'],
         email=data['email'],
+        phone_number=data.get('phone_number'),
         rent_date=datetime.strptime(data['rent_date'], '%Y-%m-%d').date(),
         rent_amount=data['rent_amount'],
         due_day=data.get('due_day', 1),
         frequency=data.get('frequency', 'monthly'),
-        user_id=current_user.id
+        user_id=user_id
     )
     db.session.add(reminder)
     db.session.commit()
@@ -93,17 +105,20 @@ def add_reminder():
     return jsonify({'message': 'Reminder added'}), 201
 
 @api.route('/record_payment', methods=['POST'])
-@login_required
+@jwt_required()
 def record_payment():
-    data = request.json
+    data = request.get_json()
+    user_id = get_jwt_identity()
+
     tenant_id = data['tenant_id']
     payment_date = datetime.strptime(data['payment_date'], '%Y-%m-%d').date()
     for_month = datetime.strptime(data['for_month'], '%Y-%m-%d').date()
     amount_paid = data['amount_paid']
 
-    reminder = RentReminder.query.filter_by(id=tenant_id, user_id=current_user.id).first()
+    # Ensure this tenant belongs to the current user
+    reminder = RentReminder.query.filter_by(id=tenant_id, user_id=user_id).first()
     if not reminder:
-        return jsonify({'error': 'Tenant not found'}), 404
+        return jsonify({'error': 'Tenant not found or unauthorized'}), 403
 
     due_date = for_month.replace(day=reminder.due_day)
     is_late = payment_date > due_date

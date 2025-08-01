@@ -2,7 +2,7 @@ from app import celery, mail, db
 from app.models import RentReminder, RentPayment
 from flask_mail import Message
 from datetime import datetime, date
-from app.twilio_utils import send_sms
+from app.utils.helper import TwilioHelper
 import logging
 
 @celery.task(name='send_rent_reminder')
@@ -23,6 +23,7 @@ def send_rent_reminder(email, tenant_name, rent_amount, due_date):
 
 @celery.task(name='send_rent_notifications_task')
 def send_rent_notifications_task():
+    twilio = TwilioHelper()
     today = datetime.today().date()
     first_of_month = date(today.year, today.month, 1)
 
@@ -60,7 +61,7 @@ def send_rent_notifications_task():
                 f"Hi {reminder.tenant_name}, your rent of Rs{reminder.rent_amount:.2f} "
                 f"is due on {due_date.strftime('%d %b %Y')}. Please pay on time."
             )
-            sms_sid = send_sms(reminder.phone_number, sms_body)
+            sms_sid = twilio.send_sms(reminder.phone_number, sms_body)
             logging.info(f"SMS sent to {reminder.phone_number}, SID: {sms_sid}")
 
         # Update last_notified
