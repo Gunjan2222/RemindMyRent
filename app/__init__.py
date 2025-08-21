@@ -4,6 +4,7 @@ from flask_migrate import Migrate
 from flask_mail import Mail
 from flask_jwt_extended import JWTManager
 from celery import Celery
+from flask_cors import CORS 
 
 from app.config import Config
 from app.utils.token_blacklist import TokenBlacklist
@@ -13,11 +14,13 @@ db = SQLAlchemy()
 mail = Mail()
 migrate = Migrate()
 jwt = JWTManager()
-celery = Celery(__name__)
+celery = Celery(__name__, broker=Config.broker_url, backend=Config.result_backend)
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+
+    CORS(app, resources={r"/*": {"origins": "*"}})
 
     # Initialize extensions with app
     db.init_app(app)
