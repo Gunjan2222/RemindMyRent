@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_mail import Mail
@@ -33,6 +33,23 @@ def create_app():
         jti = jwt_payload["jti"]
         blacklist = TokenBlacklist()
         return blacklist.is_blacklisted(jti)
+
+    @jwt.revoked_token_loader
+    def revoked_token_callback(jwt_header, jwt_payload):
+        return jsonify({"msg": "Token has been revoked"}), 401
+
+    @jwt.expired_token_loader
+    def expired_token_callback(jwt_header, jwt_payload):
+        return jsonify({"msg": "Token has expired"}), 401
+
+    @jwt.invalid_token_loader
+    def invalid_token_callback(reason):
+        return jsonify({"msg": f"Invalid token: {reason}"}), 422
+
+    @jwt.unauthorized_loader
+    def missing_token_callback(reason):
+        return jsonify({"msg": f"Missing token: {reason}"}), 401
+    # --- End JWT Setup ---
 
     # Register blueprints
     from app.routes import api
