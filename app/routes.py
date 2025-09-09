@@ -394,3 +394,14 @@ def profile():
     except Exception as e:
         current_app.logger.error(f"Error in profile: {str(e)}")
         return jsonify({"message": "Internal server error while fetching profile"}), 500
+    
+@api.route("/change-password", methods=['POST'])
+@jwt_required()
+def change_pass():
+    try:
+        con = ProfileController()
+        response = con.change_password()
+        return response
+    except Exception as e:
+        current_app.logger.error(f"Error in change password: {str(e)}")
+        return jsonify({"message": "Internal server error while changing password"}), 500

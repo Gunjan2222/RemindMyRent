@@ -133,58 +133,67 @@ class AuthController:
 
             # --- Validation ---
             if not email:
-                return jsonify({"message": "Email is required"}), 400
+                return jsonify({"error": "Validation failed", "details": "Email is required"}), 400
 
             if not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
-                return jsonify({"message": "Invalid email format"}), 400
+                return jsonify({"error": "Validation failed", "details": "Invalid email format"}), 400
             
             user = User.query.filter_by(email=email).first()
-            if not user:
-                return jsonify({"message": "Email not found"}), 404
 
-            token = secrets.token_urlsafe(32)
-            expires_at = datetime.utcnow() + timedelta(hours=1)
-            reset_token = PasswordResetToken(user_id=user.id, token=token, expires_at=expires_at)
+            if user:
+                token = secrets.token_urlsafe(32)
+                expires_at = datetime.utcnow() + timedelta(hours=1)
 
-            db.session.add(reset_token)
-            db.session.commit()
+                reset_token = PasswordResetToken(
+                    user_id=user.id, token=token, expires_at=expires_at
+                )
+                db.session.add(reset_token)
+                db.session.commit()
 
-            reset_link = url_for("api.reset_password", token=token, _external=True)
-            msg = Message("Password Reset Request", recipients=[email])
-            msg.body = f"Click the link to reset your password: {reset_link}"
+                reset_link = url_for("api.reset_password", token=token, _external=True)
+                msg = Message("Password Reset Request", recipients=[email])
+                msg.body = f"Click the link to reset your password: {reset_link}"
 
-            try:
-                mail.send(msg)
-            except Exception as e:
-                current_app.logger.error(f"Mail send failed: {e}")
-                return jsonify({"message": "If this email exists, a reset link has been sent"}), 200
+                try:
+                    mail.send(msg)
+                    current_app.logger.info(f"Password reset email sent to {email}")
+                except Exception as e:
+                    current_app.logger.error(f"Mail send failed: {e}", exc_info=True)
 
-            return jsonify({"message": "Password reset email sent"}), 200
+            # Always return generic success (even if user not found)
+            return jsonify({"message": "If this email exists, a reset link has been sent"}), 200
 
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Forgot password error: {e}")
-            return jsonify({"message": "Failed to send reset email", "details": str(e)}), 500
-        
+            current_app.logger.error(f"Forgot password error: {e}", exc_info=True)
+            return jsonify({"error": "Forgot password failed", "details": str(e)}), 500
+
+            
     def reset_password(self, token):
         try:
-            password = self.data.get("password")
+            password = (self.data.get("password") or "").strip()
 
             # --- Password validation ---
             if not password:
-                return jsonify({"message": "Password is required"}), 400
+                return jsonify({"error": "Validation failed", "details": "Password is required"}), 400
             if len(password) < 8:
-                return jsonify({"message": "Password must be at least 8 characters long"}), 400
+                return jsonify({"error": "Validation failed", "details": "Password must be at least 8 characters long"}), 400
             if not any(c.isupper() for c in password) or not any(c.isdigit() for c in password):
-                return jsonify({"message": "Password must contain at least one uppercase letter and one digit"}), 400
+                return jsonify({"error": "Validation failed", "details": "Password must contain at least one uppercase letter and one digit"}), 400
 
             reset_token = PasswordResetToken.query.filter_by(token=token).first()
+
             if not reset_token or reset_token.is_expired():
-                return jsonify({"message": "Invalid or expired token"}), 400
+                return jsonify({"error": "Invalid or expired token"}), 400
 
             user = User.query.get(reset_token.user_id)
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            # Update user password
             user.password = self.auth_helper.hash_password(password)
 
+            # Invalidate this token
             db.session.delete(reset_token)
             db.session.commit()
 
@@ -192,9 +201,9 @@ class AuthController:
 
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Reset password error: {e}")
-            return jsonify({"message": "Failed to reset password", "details": str(e)}), 500
-
+            current_app.logger.error(f"Reset password error: {e}", exc_info=True)
+            return jsonify({"error": "Reset password failed", "details": str(e)}), 500
+        
 class ProfileController:
 
     def __init__(self):
@@ -272,62 +281,75 @@ class TenantController:
         self.data = request.get_json(silent=True) or request.form
         self.user_id = get_jwt_identity()
 
+    # ---------------- ADD TENANT ----------------
     def add_tenant(self):
         try:
-            # --- Required field checks ---
             required_fields = ["name", "email", "phone_number"]
             missing = [f for f in required_fields if not self.data.get(f)]
             if missing:
                 return jsonify({"message": f"Missing required fields: {', '.join(missing)}"}), 400
-            
-            # --- Validate email format ---
-            if not match(r"^[\w\.-]+@[\w\.-]+\.\w+$", self.data.get("email")):
+
+            # Email validation
+            email = self.data.get("email")
+            if email and not match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
                 return jsonify({"message": "Invalid email format"}), 400
-            
-            # --- Validate optional phone number ---
+
+            # Phone validation
             phone_number = self.data.get("phone_number")
             if phone_number and not match(r"^(?:\+91|0)?[6-9]\d{9}$", phone_number):
                 return jsonify({"message": "Invalid phone number format"}), 400
-            
-            tenant = Tenant(name=self.data.get("name"), phone_number=phone_number, email=self.data.get("email"), address=self.data.get("address"), user_id=self.user_id)
+
+            tenant = Tenant(
+                name=self.data.get("name"),
+                email=email,
+                phone_number=phone_number,
+                address=self.data.get("address"),
+                user_id=self.user_id,
+                status="Active"  # default active
+            )
 
             db.session.add(tenant)
             db.session.commit()
-
-            return jsonify({"message": "Tenant added"}), 201
+            return jsonify({"message": "Tenant added successfully"}), 201
 
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error adding tenant: {e}")
             return jsonify({"message": "Failed to add tenant", "details": str(e)}), 500
-        
-    def update_tenant(self,tenant_id):
+
+    # ---------------- UPDATE TENANT ----------------
+    def update_tenant(self, tenant_id):
         try:
-            # --- Fetch tenant that belongs to the logged-in user ---
             tenant = Tenant.query.filter_by(id=tenant_id, user_id=self.user_id).first()
             if not tenant:
                 return jsonify({"message": "Tenant not found or not authorized"}), 404
 
-            # --- Update fields if provided ---
-            if "tenant_name" in self.data and self.data.get("tenant_name"):
-                tenant.name = self.data.get("tenant_name")
-            
-            if "email" in self.data:
-                email = self.data.get("email")
+            # Update fields safely
+            name = self.data.get("name")
+            email = self.data.get("email")
+            phone_number = self.data.get("phone_number")
+            address = self.data.get("address")
+            status = self.data.get("status")
+
+            if name:
+                tenant.name = name.strip()
+
+            if email is not None:
                 if email and not match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
                     return jsonify({"message": "Invalid email format"}), 400
-                tenant.email = email
+                tenant.email = email.strip() if email else None
 
-            if "phone_number" in self.data:
-                phone_number = self.data.get("phone_number")
+            if phone_number is not None:
                 if phone_number and not match(r"^(?:\+91|0)?[6-9]\d{9}$", phone_number):
                     return jsonify({"message": "Invalid phone number format"}), 400
-                tenant.phone_number = phone_number
+                tenant.phone_number = phone_number.strip() if phone_number else None
 
-            if "address" in self.data:
-                tenant.address = self.data.get("address")
+            if address is not None:
+                tenant.address = address.strip()
 
-            # --- Commit changes ---
+            if status in ["Active", "Inactive"]:
+                tenant.status = status
+
             db.session.commit()
             return jsonify({"message": "Tenant updated successfully"}), 200
 
@@ -335,36 +357,38 @@ class TenantController:
             db.session.rollback()
             current_app.logger.error(f"Error updating tenant: {e}")
             return jsonify({"message": "Failed to update tenant", "details": str(e)}), 500
-        
-    def delete_tenant(self, tenant_id):
-        try:
-            # --- Fetch tenant that belongs to the logged-in user ---
-            tenant = Tenant.query.filter_by(id=tenant_id, user_id=self.user_id).first()
-            if not tenant:
-                return jsonify({"message": "Tenant not found or not authorized"}), 404
 
-            # --- Delete tenant ---
-            db.session.delete(tenant)
-            db.session.commit()
 
-            return jsonify({"message": "Tenant deleted successfully"}), 200
+        # ---------------- DELETE TENANT (SOFT) ----------------
+        def delete_tenant(self, tenant_id):
+            try:
+                tenant = Tenant.query.filter_by(id=tenant_id, user_id=self.user_id, status="Active").first()
+                if not tenant:
+                    return jsonify({"message": "Tenant not found or not authorized"}), 404
 
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error deleting tenant: {e}")
-            return jsonify({"message": "Failed to delete tenant", "details": str(e)}), 500
-        
+                tenant.status = "Inactive"  # soft delete
+                db.session.commit()
+
+                return jsonify({"message": "Tenant marked as inactive"}), 200
+
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error(f"Error deleting tenant: {e}")
+                return jsonify({"message": "Failed to delete tenant", "details": str(e)}), 500
+
+    # ---------------- GET ALL TENANTS ----------------
     def get_all_tenants(self):
         try:
-            # --- Query params ---
-            page = int(request.args.get("page", 1))       # default page = 1
-            per_page = int(request.args.get("per_page", 10))  # default 10 tenants per page
+            page = int(request.args.get("page", 1))
+            per_page = int(request.args.get("per_page", 10))
             search = request.args.get("search", "").strip()
+            status_filter = request.args.get("status")  # Optional filter: Active / Inactive
 
-            # --- Base query ---
             query = Tenant.query.filter_by(user_id=self.user_id)
 
-            # --- Apply search filter if provided ---
+            if status_filter:
+                query = query.filter_by(status=status_filter)
+
             if search:
                 like_pattern = f"%{search}%"
                 query = query.filter(
@@ -373,11 +397,9 @@ class TenantController:
                     (Tenant.phone_number.ilike(like_pattern))
                 )
 
-            # --- Paginate results ---
             pagination = query.order_by(Tenant.created_date.desc()).paginate(page=page, per_page=per_page, error_out=False)
             tenants = pagination.items
 
-            # --- Convert to list of dicts ---
             tenant_list = [
                 {
                     "id": t.id,
@@ -385,6 +407,7 @@ class TenantController:
                     "email": t.email,
                     "phone_number": t.phone_number,
                     "address": t.address,
+                    "status": t.status,
                     "created_date": t.created_date.isoformat() if t.created_date else None,
                     "updated_date": t.updated_date.isoformat() if t.updated_date else None
                 }
@@ -402,24 +425,20 @@ class TenantController:
         except Exception as e:
             current_app.logger.error(f"Error fetching tenants: {e}")
             return jsonify({"message": "Failed to fetch tenants", "details": str(e)}), 500
-        
+
+    # ---------------- GET TENANT DETAIL ----------------
     def get_tenant_detail(self, tenant_id):
         try:
             tenant = Tenant.query.filter_by(id=tenant_id, user_id=self.user_id).first()
             if not tenant:
                 return jsonify({"message": "Tenant not found"}), 404
 
-            # Get active lease (or first lease if multiple)
             lease = Lease.query.filter_by(tenant_id=tenant.id, status="active").first()
-            rent_amount = None
-            start_date = None
-            end_date = None
+            rent_amount, start_date, end_date = None, None, None
 
             if lease:
                 start_date = lease.lease_start_date
                 end_date = lease.lease_end_date
-
-                # Get property to fetch monthly rent
                 property_obj = Property.query.get(lease.property_id)
                 if property_obj:
                     rent_amount = property_obj.monthly_rent
@@ -430,6 +449,7 @@ class TenantController:
                 "email": tenant.email,
                 "phone_number": tenant.phone_number,
                 "address": tenant.address,
+                "status": tenant.status,
                 "rent_amount": rent_amount,
                 "start_date": start_date.isoformat() if start_date else None,
                 "end_date": end_date.isoformat() if end_date else None
