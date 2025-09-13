@@ -318,28 +318,6 @@ def get_payment_detail(payment_id):
         return jsonify({"message": "Failed to fetch payment detail", "details": str(e)}), 500
 
 
-@api.route("/tenants/<int:tenant_id>/payments", methods=["GET"])
-@jwt_required()
-def get_payments_by_tenant(tenant_id):
-    try:
-        payments = RentPaymentController()
-        result = payments.get_payments_by_tenant(tenant_id)
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error in get_payments_by_tenant (Tenant ID: {tenant_id}): {str(e)}", exc_info=True)
-        return jsonify({"message": "Failed to fetch tenant payments", "details": str(e)}), 500
-
-
-@api.route("/properties/<int:property_id>/payments", methods=["GET"])
-@jwt_required()
-def get_payments_by_property(property_id):
-    try:
-        payments = RentPaymentController()
-        result = payments.get_payments_by_property(property_id)
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error in get_payments_by_property (Property ID: {property_id}): {str(e)}", exc_info=True)
-        return jsonify({"message": "Failed to fetch property payments", "details": str(e)}), 500
 # ---------------------
 # Reminders Routes
 # ---------------------
@@ -380,6 +358,19 @@ def trigger_today_reminders():
         current_app.logger.error(f"Error triggering reminder task: {e}", exc_info=True)
         return jsonify({"message": "Failed to trigger reminder task", "details": str(e)}), 500
 
+@api.route("/dashboard/stats", methods=["GET"])
+@jwt_required()
+def stats():
+    try:
+        con = RentReminderController()
+        response = con.get_dashboard_stats()
+        return response
+    except Exception as e:
+        current_app.logger.error(f"Error fetching dashboard stats: {e}", exc_info=True)
+        return jsonify({
+            "message": "Internal server error while fetching dashboard stats",
+            "details": str(e)
+        }), 500
 
 @api.route("/profile", methods=["GET", "PUT"])
 @jwt_required()

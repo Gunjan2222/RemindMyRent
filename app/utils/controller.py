@@ -7,7 +7,7 @@ import secrets, re
 from datetime import datetime, timedelta, date
 from flask_jwt_extended import get_jwt_identity
 from re import match
-from calendar import monthrange
+from calendar import monthrange, month_abbr
 
 class AuthController:
 
@@ -359,22 +359,22 @@ class TenantController:
             return jsonify({"message": "Failed to update tenant", "details": str(e)}), 500
 
 
-        # ---------------- DELETE TENANT (SOFT) ----------------
-        def delete_tenant(self, tenant_id):
-            try:
-                tenant = Tenant.query.filter_by(id=tenant_id, user_id=self.user_id, status="Active").first()
-                if not tenant:
-                    return jsonify({"message": "Tenant not found or not authorized"}), 404
+    # ---------------- DELETE TENANT (SOFT) ----------------
+    def delete_tenant(self, tenant_id):
+        try:
+            tenant = Tenant.query.filter_by(id=tenant_id, user_id=self.user_id, status="Active").first()
+            if not tenant:
+                return jsonify({"message": "Tenant not found or not authorized"}), 404
 
-                tenant.status = "Inactive"  # soft delete
-                db.session.commit()
+            tenant.status = "Inactive"  # soft delete
+            db.session.commit()
 
-                return jsonify({"message": "Tenant marked as inactive"}), 200
+            return jsonify({"message": "Tenant marked as inactive"}), 200
 
-            except Exception as e:
-                db.session.rollback()
-                current_app.logger.error(f"Error deleting tenant: {e}")
-                return jsonify({"message": "Failed to delete tenant", "details": str(e)}), 500
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error deleting tenant: {e}")
+            return jsonify({"message": "Failed to delete tenant", "details": str(e)}), 500
 
     # ---------------- GET ALL TENANTS ----------------
     def get_all_tenants(self):
@@ -560,10 +560,12 @@ class PropertyController:
                 )
 
             # --- Paginate results ---
-            pagination = query.order_by(Property.created_date.desc()).paginate(page=page, per_page=per_page, error_out=False)
+            pagination = query.order_by(Property.created_date.desc()).paginate(
+                page=page, per_page=per_page, error_out=False
+            )
             properties = pagination.items
 
-            # --- Convert to list of dicts ---
+            # --- Convert to list of dicts with leases ---
             property_list = [
                 {
                     "id": p.id,
@@ -572,7 +574,19 @@ class PropertyController:
                     "monthly_rent": p.monthly_rent,
                     "deposit_amount": p.deposit_amount,
                     "created_date": p.created_date.isoformat() if p.created_date else None,
-                    "updated_date": p.updated_date.isoformat() if p.updated_date else None
+                    "updated_date": p.updated_date.isoformat() if p.updated_date else None,
+                    "leases": [
+                        {
+                            "id": lease.id,
+                            "tenant_id": lease.tenant_id,
+                            "property_id": lease.property_id,
+                            "status": lease.status,
+                            "lease_start_date": lease.lease_start_date.isoformat() if lease.lease_start_date else None,
+                            "lease_end_date": lease.lease_end_date.isoformat() if lease.lease_end_date else None,
+                            "due_day": lease.due_day
+                        }
+                        for lease in p.leases
+                    ]
                 }
                 for p in properties
             ]
@@ -586,30 +600,53 @@ class PropertyController:
             }), 200
 
         except Exception as e:
-            current_app.logger.error(f"Error fetching properties: {e}")
+            current_app.logger.error(f"Error fetching properties: {e}", exc_info=True)
             return jsonify({"message": "Failed to fetch properties", "details": str(e)}), 500
 
-        
-    def get_property_detail(self, property_id): 
+            
+    def get_property_detail(self, property_id):
         try:
-            property_obj = Property.query.filter_by(id=property_id, owner_id=self.user_id).first()
+            property_obj = Property.query.filter_by(
+                id=property_id, owner_id=self.user_id
+            ).first()
+
             if not property_obj:
-                current_app.logger.warning(f"Property ID {property_id} not found for user {self.user_id}")
+                current_app.logger.warning(
+                    f"Property ID {property_id} not found for user {self.user_id}"
+                )
                 return jsonify({"error": "Property not found"}), 404
 
             result = {
                 "id": property_obj.id,
                 "owner_id": property_obj.owner_id,
-                "owner_name": property_obj.owner.username,  # <-- now you can directly access this
+                "owner_name": getattr(property_obj.owner, "username", None),  # safe access
                 "title": property_obj.title,
                 "address": property_obj.address,
                 "monthly_rent": property_obj.monthly_rent,
-                "deposit_amount": property_obj.deposit_amount
+                "deposit_amount": property_obj.deposit_amount,
+                "created_date": property_obj.created_date.isoformat() if property_obj.created_date else None,
+                "updated_date": property_obj.updated_date.isoformat() if property_obj.updated_date else None,
+                "leases": [
+                    {
+                        "id": lease.id,
+                        "tenant_id": lease.tenant_id,
+                        "tenant_name": getattr(lease.tenant, "name", None),  # if tenant relationship exists
+                        "property_id": lease.property_id,
+                        "status": lease.status,
+                        "lease_start_date": lease.lease_start_date.isoformat() if lease.lease_start_date else None,
+                        "lease_end_date": lease.lease_end_date.isoformat() if lease.lease_end_date else None,
+                        "due_day": lease.due_day,
+                    }
+                    for lease in property_obj.leases
+                ],
             }
+
             return jsonify(result), 200
 
         except Exception as e:
-            current_app.logger.error(f"Failed to fetch property ID {property_id}: {e}")
+            current_app.logger.error(
+                f"Failed to fetch property ID {property_id}: {e}", exc_info=True
+            )
             return jsonify({"error": "Internal server error"}), 500
 
 
@@ -800,7 +837,7 @@ class LeaseController:
             current_app.logger.error(f"Error fetching leases for user {self.user_id}: {str(e)}")
             return {"message": "An error occurred while fetching leases"}, 500
 
-        
+            
     def get_lease_detail(self, lease_id):
         try:
             lease = (
@@ -846,7 +883,7 @@ class RentPaymentController:
             property_id = self.data.get("property_id")
             amount = self.data.get("amount")
             payment_mode = self.data.get("payment_mode", "Cash")
-            status = self.data.get("status", "paid")
+            status = self.data.get("status", "pending")
             transaction_reference = self.data.get("transaction_reference")
 
             # Validate required fields
@@ -976,67 +1013,6 @@ class RentPaymentController:
             current_app.logger.error(f"Error fetching payment detail: {e}", exc_info=True)
             return jsonify({"message": "Failed to fetch payment detail", "details": str(e)}), 500
 
-
-    def get_payments_by_tenant(self, tenant_id):
-        try:
-            # Verify tenant belongs to the current user
-            tenant = Tenant.query.filter_by(id=tenant_id, user_id=self.user_id).first()
-            if not tenant:
-                return jsonify({"message": "Tenant not found or unauthorized"}), 404
-
-            # Fetch payments
-            payments = tenant.payments
-            result = []
-            for p in payments:
-                result.append({
-                    "id": p.id,
-                    "property_id": p.property_id,
-                    "property_title": p.property.title if p.property else None,
-                    "amount": p.amount,
-                    "payment_date": p.payment_date.isoformat() if p.payment_date else None,
-                    "payment_mode": p.payment_mode,
-                    "status": p.status,
-                    "transaction_reference": p.transaction_reference
-                })
-
-            return jsonify(result), 200
-
-        except Exception as e:
-            current_app.logger.error(f"Error fetching payments for tenant {tenant_id}: {e}", exc_info=True)
-            return jsonify({"message": "Failed to fetch payments", "details": str(e)}), 500
-
-        
-    def get_payments_by_property(self, property_id):
-        try:
-
-            # Verify property belongs to current user
-            prop = Property.query.filter_by(id=property_id, owner_id=self.user_id).first()
-            if not prop:
-                return jsonify({"message": "Property not found or unauthorized"}), 404
-
-            # Fetch payments for this property
-            payments = RentPayment.query.filter_by(property_id=property_id).order_by(RentPayment.payment_date.desc()).all()
-            if not payments:
-                return jsonify({"message": "No payments found for this property"}), 404
-
-            result = []
-            for p in payments:
-                result.append({
-                    "id": p.id,
-                    "tenant_id": p.tenant_id,
-                    "tenant_name": p.tenant.name if p.tenant else None,
-                    "amount": p.amount,
-                    "payment_date": p.payment_date.isoformat() if p.payment_date else None,
-                    "payment_mode": p.payment_mode,
-                    "status": p.status,
-                    "transaction_reference": p.transaction_reference
-                })
-
-            return jsonify(result), 200
-
-        except Exception as e:
-            current_app.logger.error(f"Error fetching payments for property {property_id}: {e}", exc_info=True)
-            return jsonify({"message": "Failed to fetch property payments", "details": str(e)}), 500
         
 class RentReminderController:
 
@@ -1098,7 +1074,7 @@ class RentReminderController:
                 .join(Lease, RentReminder.lease_id == Lease.id)   # Join via lease
                 .join(Tenant, Lease.tenant_id == Tenant.id)       # Join tenant
                 .join(Property, Lease.property_id == Property.id) # Join property
-                .filter(Tenant.user_id == self.user_id)
+                .filter(Property.owner_id == self.user_id)
                 .order_by(RentReminder.due_date.desc())
                 .all()
             )
@@ -1134,7 +1110,7 @@ class RentReminderController:
                 .join(Tenant, Lease.tenant_id == Tenant.id)
                 .join(Property, Lease.property_id == Property.id)
                 .filter(
-                    Tenant.user_id == self.user_id,
+                    Property.owner_id == self.user_id,
                     RentReminder.due_date >= today
                 )
                 .order_by(RentReminder.due_date.asc())
@@ -1159,6 +1135,82 @@ class RentReminderController:
         except Exception as e:
             current_app.logger.error(f"Error fetching upcoming reminders: {e}", exc_info=True)
             return jsonify({"message": "Failed to fetch upcoming reminders", "details": str(e)}), 500
+
+    def get_dashboard_stats(self):
+        try:
+            today = date.today()
+            six_months_ago = today.replace(day=1) - timedelta(days=180)
+
+            # --- Counts ---
+            total_tenants = Tenant.query.count()
+            total_properties = Property.query.count()
+            upcoming_reminders = RentReminder.query.filter(RentReminder.reminder_sent == False).count()
+            overdue_payments = RentPayment.query.filter(RentPayment.status == "pending").count()
+
+            # --- Collected rent (last 6 months) ---
+            collected_data = (
+                db.session.query(
+                    db.extract('year', RentPayment.payment_date).label("year"),
+                    db.extract('month', RentPayment.payment_date).label("month"),
+                    db.func.sum(RentPayment.amount).label("collected")
+                )
+                .filter(RentPayment.payment_date >= six_months_ago)
+                .group_by("year", "month")
+                .order_by("year", "month")
+                .all()
+            )
+
+            # --- Expected rent (from active leases) ---
+            expected_data = (
+                db.session.query(
+                    db.extract('year', Lease.lease_start_date).label("year"),
+                    db.extract('month', Lease.lease_start_date).label("month"),
+                    db.func.sum(Property.monthly_rent).label("expected")
+                )
+                .join(Property, Lease.property_id == Property.id)
+                .filter(
+                    Lease.status == "active",
+                    Lease.lease_start_date <= today,
+                    db.or_(Lease.lease_end_date == None, Lease.lease_end_date >= six_months_ago)
+                )
+                .group_by("year", "month")
+                .order_by("year", "month")
+                .all()
+            )
+
+            # Convert query results to dicts
+            collected_map = {(int(r.year), int(r.month)): float(r.collected or 0) for r in collected_data}
+            expected_map = {(int(r.year), int(r.month)): float(r.expected or 0) for r in expected_data}
+
+            # Build rent trend (last 6 months loop)
+            rent_trend = []
+            for i in range(6, 0, -1):
+                ref_date = today.replace(day=1) - timedelta(days=30 * (i - 1))
+                year, month = ref_date.year, ref_date.month
+                rent_trend.append({
+                    "month": f"{month_abbr[month]} {year}", 
+                    "collected": collected_map.get((year, month), 0),
+                    "expected": expected_map.get((year, month), 0)
+                })
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "total_tenants": total_tenants,
+                    "total_properties": total_properties,
+                    "upcoming_reminders": upcoming_reminders,
+                    "overdue_payments": overdue_payments,
+                    "rent_trend": rent_trend
+                }
+            }), 200
+
+        except Exception as e:
+            current_app.logger.error(f"Error in /dashboard/stats: {e}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": "Failed to fetch dashboard stats",
+                "details": str(e)
+            }), 500
     
 # class NotificationController:
 
@@ -1212,3 +1264,189 @@ class RentReminderController:
 #         except Exception as e:
 #             current_app.logger.error(f"Error fetching notifications for tenant {tenant_id}: {e}", exc_info=True)
 #             return jsonify({"message": "Failed to fetch notifications", "details": str(e)}), 500
+
+
+
+# from flask import jsonify, request, current_app, send_file
+# from app import db
+# from app.models import RentPayment, Lease, Property
+# from datetime import date, timedelta
+# import io
+# import pandas as pd
+# from reportlab.lib.pagesizes import A4
+# from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+# from reportlab.lib import colors
+# from reportlab.lib.styles import getSampleStyleSheet
+
+
+# class ReportsController:
+#     @staticmethod
+#     def get_reports():
+#         """
+#         Generate rent collection & expected rent report.
+#         Query params:
+#           - start_date (YYYY-MM-DD)
+#           - end_date (YYYY-MM-DD)
+#           - tenant_id
+#           - property_id
+#           - format=json|pdf|excel
+#         """
+#         try:
+#             today = date.today()
+#             start_date = request.args.get("start_date")
+#             end_date = request.args.get("end_date")
+#             tenant_id = request.args.get("tenant_id")
+#             property_id = request.args.get("property_id")
+#             output_format = request.args.get("format", "json")
+
+#             if not start_date:
+#                 start_date = (today.replace(day=1) - timedelta(days=365)).isoformat()
+#             if not end_date:
+#                 end_date = today.isoformat()
+
+#             # --- Collected Rent ---
+#             collected_query = (
+#                 db.session.query(
+#                     db.extract("year", RentPayment.payment_date).label("year"),
+#                     db.extract("month", RentPayment.payment_date).label("month"),
+#                     db.func.sum(RentPayment.amount).label("collected"),
+#                 )
+#                 .filter(RentPayment.payment_date.between(start_date, end_date))
+#             )
+#             if tenant_id:
+#                 collected_query = collected_query.filter(RentPayment.tenant_id == tenant_id)
+#             if property_id:
+#                 collected_query = collected_query.filter(RentPayment.property_id == property_id)
+
+#             collected_map = {
+#                 (int(r.year), int(r.month)): float(r.collected or 0)
+#                 for r in collected_query.group_by("year", "month").all()
+#             }
+
+#             # --- Expected Rent ---
+#             expected_query = (
+#                 db.session.query(
+#                     db.extract("year", Lease.lease_start_date).label("year"),
+#                     db.extract("month", Lease.lease_start_date).label("month"),
+#                     db.func.sum(Property.monthly_rent).label("expected"),
+#                 )
+#                 .join(Property, Lease.property_id == Property.id)
+#                 .filter(Lease.status == "active")
+#             )
+#             if property_id:
+#                 expected_query = expected_query.filter(Lease.property_id == property_id)
+#             if tenant_id:
+#                 expected_query = expected_query.filter(Lease.tenant_id == tenant_id)
+
+#             expected_map = {
+#                 (int(r.year), int(r.month)): float(r.expected or 0)
+#                 for r in expected_query.group_by("year", "month").all()
+#             }
+
+#             # --- Build trend ---
+#             trend = []
+#             ref_date = date.fromisoformat(start_date)
+#             end_date_obj = date.fromisoformat(end_date)
+#             while ref_date <= end_date_obj:
+#                 y, m = ref_date.year, ref_date.month
+#                 trend.append(
+#                     {
+#                         "month": f"{m:02d}-{y}",
+#                         "collected": collected_map.get((y, m), 0),
+#                         "expected": expected_map.get((y, m), 0),
+#                     }
+#                 )
+#                 # move to next month
+#                 if m == 12:
+#                     ref_date = ref_date.replace(year=y + 1, month=1, day=1)
+#                 else:
+#                     ref_date = ref_date.replace(month=m + 1, day=1)
+
+#             # --- Summary ---
+#             total_collected = sum(item["collected"] for item in trend)
+#             total_expected = sum(item["expected"] for item in trend)
+#             overdue = total_expected - total_collected if total_expected > total_collected else 0
+
+#             report_data = {
+#                 "summary": {
+#                     "total_collected": total_collected,
+#                     "total_expected": total_expected,
+#                     "overdue": overdue,
+#                 },
+#                 "trend": trend,
+#             }
+
+#             # --- Return formats ---
+#             if output_format == "json":
+#                 return jsonify({"success": True, **report_data}), 200
+
+#             elif output_format == "excel":
+#                 df = pd.DataFrame(trend)
+#                 output = io.BytesIO()
+#                 with pd.ExcelWriter(output, engine="openpyxl") as writer:
+#                     df.to_excel(writer, index=False, sheet_name="Report")
+#                 output.seek(0)
+#                 return send_file(
+#                     output,
+#                     as_attachment=True,
+#                     download_name="rent_report.xlsx",
+#                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+#                 )
+
+#             elif output_format == "pdf":
+#                 buffer = io.BytesIO()
+#                 doc = SimpleDocTemplate(buffer, pagesize=A4)
+#                 elements = []
+#                 styles = getSampleStyleSheet()
+
+#                 elements.append(Paragraph("Rent Report", styles["Title"]))
+#                 elements.append(Spacer(1, 12))
+#                 elements.append(
+#                     Paragraph(
+#                         f"Total Collected: ₹{total_collected:,.2f} | "
+#                         f"Expected: ₹{total_expected:,.2f} | "
+#                         f"Overdue: ₹{overdue:,.2f}",
+#                         styles["Normal"],
+#                     )
+#                 )
+#                 elements.append(Spacer(1, 12))
+
+#                 # Table
+#                 data = [["Month", "Collected (₹)", "Expected (₹)"]]
+#                 for row in trend:
+#                     data.append(
+#                         [
+#                             row["month"],
+#                             f"{row['collected']:,.2f}",
+#                             f"{row['expected']:,.2f}",
+#                         ]
+#                     )
+
+#                 table = Table(data, hAlign="LEFT")
+#                 table.setStyle(
+#                     TableStyle(
+#                         [
+#                             ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+#                             ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+#                             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+#                             ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+#                         ]
+#                     )
+#                 )
+#                 elements.append(table)
+
+#                 doc.build(elements)
+#                 buffer.seek(0)
+#                 return send_file(
+#                     buffer,
+#                     as_attachment=True,
+#                     download_name="rent_report.pdf",
+#                     mimetype="application/pdf",
+#                 )
+
+#             else:
+#                 return jsonify({"success": False, "message": "Invalid format"}), 400
+
+#         except Exception as e:
+#             current_app.logger.error(f"Error generating report: {e}", exc_info=True)
+#             return jsonify({"success": False, "message": "Failed to generate report", "details": str(e)}), 500

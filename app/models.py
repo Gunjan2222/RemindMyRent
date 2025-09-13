@@ -101,7 +101,7 @@ class RentPayment(db.Model, TimeStamp):
     amount = db.Column(db.Float, nullable=False)
     payment_date = db.Column(db.Date, default=date.today)
     payment_mode = db.Column(db.String(50), default="Cash")  # Cash, UPI, Bank Transfer
-    status = db.Column(db.String(50), default="paid")  # paid, pending, late
+    status = db.Column(db.String(50), default="pending")  # paid, pending, late
     transaction_reference = db.Column(db.String(255), nullable=True)
 
 
