@@ -1,17 +1,19 @@
 from app import db
 from datetime import datetime, date
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
 
 class TimeStamp:
-    created_date = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_date = db.Column(db.DateTime, default=datetime.now)
+    updated_date = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     created_by = db.Column(db.String(50), default='app')
     updated_by = db.Column(db.String(50), default='app')
 
 
 class User(db.Model, TimeStamp):
-    __tablename__ = 'users' 
+    __tablename__ = 'users'
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username = db.Column(db.String(100), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     contact = db.Column(db.String(15))
@@ -30,7 +32,7 @@ class User(db.Model, TimeStamp):
 class Tenant(db.Model, TimeStamp):
     __tablename__ = "tenants"
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4) 
     name = db.Column(db.String(120), nullable=False)
     phone_number = db.Column(db.String(15), nullable=False)
     email = db.Column(db.String(120), nullable=True)
@@ -49,7 +51,7 @@ class Tenant(db.Model, TimeStamp):
 class Property(db.Model, TimeStamp):
     __tablename__ = "properties"
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     title = db.Column(db.String(120), nullable=False)
     address = db.Column(db.String(255), nullable=False)
@@ -66,7 +68,7 @@ class Property(db.Model, TimeStamp):
 class Lease(db.Model, TimeStamp):
     __tablename__ = "leases"
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False)
     property_id = db.Column(db.Integer, db.ForeignKey("properties.id"), nullable=False)
     lease_start_date = db.Column(db.Date, nullable=False)
@@ -82,7 +84,7 @@ class Lease(db.Model, TimeStamp):
 class RentReminder(db.Model, TimeStamp):
     __tablename__ = "rent_reminders"
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lease_id = db.Column(db.Integer, db.ForeignKey("leases.id"), nullable=False)
     due_date = db.Column(db.Date, nullable=False)
     reminder_sent = db.Column(db.Boolean, default=False)
@@ -95,7 +97,7 @@ class RentReminder(db.Model, TimeStamp):
 class RentPayment(db.Model, TimeStamp):
     __tablename__ = "rent_payments"
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False)
     property_id = db.Column(db.Integer, db.ForeignKey("properties.id"), nullable=False)
     amount = db.Column(db.Float, nullable=False)
@@ -111,7 +113,7 @@ class RentPayment(db.Model, TimeStamp):
 class NotificationLog(db.Model, TimeStamp):
     __tablename__ = "notification_logs"
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False)
     landlord_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     message = db.Column(db.Text, nullable=False)
@@ -124,14 +126,15 @@ class NotificationLog(db.Model, TimeStamp):
 
 class DailyTaskLog(db.Model):
     __tablename__ = "daily_task_log"
-    id = db.Column(db.Integer, primary_key=True)
+
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     task_name = db.Column(db.String(100), nullable=False)
     run_date = db.Column(db.Date, nullable=False, default=date.today)
 
 class PasswordResetToken(db.Model, TimeStamp):
     __tablename__ = 'password_reset_tokens'
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     token = db.Column(db.String(100), unique=True, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
