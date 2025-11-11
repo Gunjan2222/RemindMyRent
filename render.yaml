@@ -99,7 +99,8 @@ databases:
     plan: starter
     region: oregon
 
-redis:
-  - name: remindmyrent-redis
+services:
+  - type: redis
+    name: remindmyrent-redis
     plan: starter
     region: oregon
