@@ -1,0 +1,105 @@
+services:
+  # --- Flask API ---
+  - type: web
+    name: rent-management-api
+    env: python
+    plan: starter
+    region: oregon
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn --config gunicorn.conf.py "app:create_app()"
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: SQLALCHEMY_DATABASE_URI
+        fromDatabase:
+          name: rent-management-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: rent-management-redis
+          property: connectionString
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_DEFAULT_SENDER
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
+        sync: false
+      # Optional: Allow CORS for frontend domain
+      - key: FRONTEND_URL
+        sync: false
+
+  # --- Celery Worker ---
+  - type: worker
+    name: rent-management-worker
+    env: python
+    plan: starter
+    region: oregon
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: celery -A celery_worker.celery worker --loglevel=INFO
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SQLALCHEMY_DATABASE_URI
+        fromDatabase:
+          name: rent-management-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: rent-management-redis
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+
+  # --- Celery Beat (Scheduler) ---
+  - type: worker
+    name: rent-management-beat
+    env: python
+    plan: starter
+    region: oregon
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: celery -A celery_beat.celery beat --loglevel=INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SQLALCHEMY_DATABASE_URI
+        fromDatabase:
+          name: rent-management-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: rent-management-redis
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+
+databases:
+  - name: rent-management-db
+    plan: starter
+    region: oregon
+
+redis:
+  - name: rent-management-redis
+    plan: starter
+    region: oregon

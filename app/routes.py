@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, url_for, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token, get_jwt
 from app import db, mail
 from app.config import Config
-from app.tasks import send_rent_notifications_task
+from app.tasks import send_rent_notifications_task, test_celery_task
 from app.utils.controller import AuthController, TenantController, PropertyController, LeaseController, RentPaymentController, RentReminderController, ProfileController
 
 api = Blueprint("api", __name__)
@@ -12,9 +12,19 @@ api = Blueprint("api", __name__)
 # ---------------------
 
 @api.route("/")
-def server_testing():
-    return jsonify({"status": "success", "message": "Server is running"}), 200
+def health():
+    return jsonify({"status": "ok", "message": "Rent Management API running"}), 200
 
+@api.route('/test-celery', methods=['GET'])
+def test_celery():
+    """
+    Manually trigger a test Celery task to verify worker and Redis connection.
+    """
+    task = test_celery_task.delay()
+    return jsonify({
+        "message": "Celery test task triggered!",
+        "task_id": task.id
+    }), 202
 
 @api.route("/register", methods=["POST"])
 def register():
@@ -352,8 +362,8 @@ def get_upcoming_reminders():
 def trigger_today_reminders():
     """Manually trigger rent reminder notifications for today."""
     try:
-        send_rent_notifications_task.delay()
-        return jsonify({"message": "Reminder task queued successfully"}), 202
+        task = send_rent_notifications_task.delay()
+        return jsonify({"message": "Reminder task queued successfully", "task_id": task.id}), 202
     except Exception as e:
         current_app.logger.error(f"Error triggering reminder task: {e}", exc_info=True)
         return jsonify({"message": "Failed to trigger reminder task", "details": str(e)}), 500

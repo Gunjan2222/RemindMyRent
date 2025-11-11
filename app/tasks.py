@@ -6,7 +6,7 @@ from datetime import datetime, date
 from app.utils.helper import TwilioHelper, log_notification
 
 
-@celery.task(name="send_email_task")
+@celery.task(name="app.tasks.send_email_task")
 def send_email_task(subject, recipients, body, tenant_id=None):
     """Send email and log notification."""
     try:
@@ -32,7 +32,7 @@ def send_email_task(subject, recipients, body, tenant_id=None):
         )
 
 
-@celery.task(name="send_rent_notifications_task")
+@celery.task(name="app.tasks.send_rent_notifications_task")
 def send_rent_notifications_task():
     """Send due rent notifications to tenants (idempotent)."""
     twilio = TwilioHelper()
@@ -188,7 +188,7 @@ def send_rent_notifications_task():
         current_app.logger.error(f"Failed to commit reminder changes: {e}", exc_info=True)
 
 
-@celery.task(name="auto_end_expired_leases")
+@celery.task(name="app.tasks.auto_end_expired_leases")
 def auto_end_expired_leases():
     """Set lease status to 'ended' if lease_end_date has passed."""
     today = date.today()
@@ -226,7 +226,7 @@ def auto_end_expired_leases():
         current_app.logger.error(f"Error updating expired leases: {e}", exc_info=True)
 
 
-@celery.task(name="update_overdue_payments")
+@celery.task(name="app.tasks.update_overdue_payments")
 def update_overdue_payments():
     """Mark pending payments as late if due date passed."""
     today = date.today()
@@ -272,3 +272,8 @@ def update_overdue_payments():
         db.session.rollback()
         current_app.logger.error(f"Error updating overdue payments: {e}", exc_info=True)
 
+
+@celery.task(name="app.tasks.test_celery_task")
+def test_celery_task():
+    print("✅ Celery test task executed successfully!")
+    return "Celery is connected and running fine 🎉"
