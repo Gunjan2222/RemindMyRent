@@ -44,11 +44,6 @@ services:
         fromDatabase:
           name: remindmyrent-db
           property: connectionString
-      - key: REDIS_URL
-        fromService:
-          name: remindmyrent-redis
-          type: redis
-          property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           name: remindmyrent-redis
@@ -72,11 +67,6 @@ services:
         fromDatabase:
           name: remindmyrent-db
           property: connectionString
-      - key: REDIS_URL
-        fromService:
-          name: remindmyrent-redis
-          type: redis
-          property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           name: remindmyrent-redis
@@ -88,12 +78,13 @@ services:
           type: redis
           property: connectionString
 
-databases:
-  - name: remindmyrent-db
+  # --- Redis Service ---
+  - type: redis
+    name: remindmyrent-redis
     plan: free
     region: oregon
 
-redis:
-  - name: remindmyrent-redis
+databases:
+  - name: remindmyrent-db
     plan: free
     region: oregon
