@@ -49,6 +49,7 @@ Flask-SQLAlchemy==3.1.1
 frozenlist==1.7.0
 greenlet==3.1.1
 gunicorn==23.0.0
+gevent==24.2.1
 gyp==0.1
 httplib2==0.20.2
 hyperlink==21.0.0
