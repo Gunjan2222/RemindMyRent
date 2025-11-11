@@ -95,11 +95,11 @@ services:
         sync: false
 
 databases:
-  - name: rent-management-db
+  - name: remindmyrent-db
     plan: starter
     region: oregon
 
 redis:
-  - name: rent-management-redis
+  - name: remindmyrent-redis
     plan: starter
     region: oregon
