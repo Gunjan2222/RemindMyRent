@@ -17,12 +17,18 @@ services:
       - key: REDIS_URL
         fromService:
           name: remindmyrent-redis
+          type: redis
+          property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           name: remindmyrent-redis
+          type: redis
+          property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
           name: remindmyrent-redis
+          type: redis
+          property: connectionString
 
   # ---- Celery Worker ----
   - type: worker
@@ -40,12 +46,18 @@ services:
       - key: REDIS_URL
         fromService:
           name: remindmyrent-redis
+          type: redis
+          property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           name: remindmyrent-redis
+          type: redis
+          property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
           name: remindmyrent-redis
+          type: redis
+          property: connectionString
 
   # ---- Celery Beat ----
   - type: worker
@@ -63,18 +75,25 @@ services:
       - key: REDIS_URL
         fromService:
           name: remindmyrent-redis
+          type: redis
+          property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           name: remindmyrent-redis
+          type: redis
+          property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
           name: remindmyrent-redis
+          type: redis
+          property: connectionString
 
   # ---- Redis Cache ----
   - type: redis
     name: remindmyrent-redis
     plan: starter
     region: oregon
+    ipAllowList: []  # Allow all internal connections
 
 databases:
   - name: remindmyrent-db
