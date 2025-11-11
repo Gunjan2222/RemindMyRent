@@ -1,11 +1,13 @@
 services:
-  # ---- Flask Web API ----
+  # --- Web Service (Flask App) ---
   - type: web
-    name: remindmyrent-api
+    name: remindmyrent-web
     env: python
     region: oregon
-    plan: starter
-    buildCommand: pip install -r requirements.txt
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+      flask db upgrade
     startCommand: gunicorn -c gunicorn.conf.py run:app
     envVars:
       - key: FLASK_ENV
@@ -30,14 +32,13 @@ services:
           type: redis
           property: connectionString
 
-  # ---- Celery Worker ----
+  # --- Celery Worker ---
   - type: worker
-    name: remindmyrent-celery-worker
+    name: remindmyrent-worker
     env: python
-    region: oregon
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.celery worker --loglevel=info
+    startCommand: celery -A app.tasks.celery worker --loglevel=info
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -59,14 +60,13 @@ services:
           type: redis
           property: connectionString
 
-  # ---- Celery Beat ----
+  # --- Celery Beat (Scheduler) ---
   - type: worker
-    name: remindmyrent-celery-beat
+    name: remindmyrent-beat
     env: python
-    region: oregon
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.celery beat --loglevel=info
+    startCommand: celery -A app.scheduler beat --loglevel=info
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -87,15 +87,13 @@ services:
           name: remindmyrent-redis
           type: redis
           property: connectionString
-
-  # ---- Redis Cache ----
-  - type: redis
-    name: remindmyrent-redis
-    plan: starter
-    region: oregon
-    ipAllowList: []  # Allow all internal connections
 
 databases:
   - name: remindmyrent-db
-    plan: starter
+    plan: free
+    region: oregon
+
+redis:
+  - name: remindmyrent-redis
+    plan: free
     region: oregon
