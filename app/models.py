@@ -1,7 +1,7 @@
 from app import db
 from datetime import datetime, date
 from sqlalchemy.dialects.postgresql import UUID
-import uuid
+import uuid, enum
 from sqlalchemy import Enum
 
 class TimeStamp:
