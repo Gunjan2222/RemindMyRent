@@ -1,7 +1,7 @@
 services:
   # --- Web Service (Flask App) ---
   - type: web
-    name: remindmyrent-web
+    name: remindmyrent
     env: python
     region: oregon
     plan: free
