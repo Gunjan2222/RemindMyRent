@@ -1,5 +1,5 @@
 services:
-  # --- Web Service (Flask App) ---
+  # --- Flask Web Service ---
   - type: web
     name: remindmyrent
     env: python
@@ -23,14 +23,15 @@ services:
           type: redis
           property: connectionString
 
-databases:
-  - name: remindmyrent-db
-    plan: free
-    region: oregon
-
-  # --- Redis (for Celery / caching) ---
+  # --- Redis Service ---
   - type: redis
     name: remindmyrent-redis
     plan: free
     region: oregon
-    ipAllowList: []  # Allow only internal connections
+    ipAllowList: []
+
+databases:
+  # --- PostgreSQL Database ---
+  - name: remindmyrent-db
+    plan: free
+    region: oregon
