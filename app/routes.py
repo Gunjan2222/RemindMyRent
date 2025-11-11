@@ -101,7 +101,7 @@ def add_tenant():
         return jsonify({"error": "Failed to add tenant", "details": str(e)}), 500
 
 
-@api.route("/update-tenant/<int:tenant_id>", methods=["PUT"])
+@api.route("/update-tenant/<uuid:tenant_id>", methods=["PUT"])
 @jwt_required()
 def update_tenant(tenant_id):
     try:
@@ -113,7 +113,7 @@ def update_tenant(tenant_id):
         return jsonify({"error": "Failed to update tenant"}), 500
 
 
-@api.route("/delete-tenant/<int:tenant_id>", methods=["DELETE"])
+@api.route("/delete-tenant/<uuid:tenant_id>", methods=["DELETE"])
 @jwt_required()
 def delete_tenant(tenant_id):
     try:
@@ -135,7 +135,7 @@ def get_tenants():
         current_app.logger.error(f"Error fetching tenants: {e}")
         return jsonify({"error": "Failed to fetch tenants"}), 500
 
-@api.route('/tenant-detail/<int:tenant_id>', methods=['GET'])
+@api.route('/tenant-detail/<uuid:tenant_id>', methods=['GET'])
 @jwt_required()
 def tenant_detail(tenant_id):
     try:
@@ -166,7 +166,7 @@ def add_property():
         current_app.logger.error(f"Error adding property: {e}")
         return jsonify({"error": "Failed to add property", "details": str(e)}), 500
     
-@api.route("/update-property/<int:property_id>", methods=["PUT"])
+@api.route("/update-property/<uuid:property_id>", methods=["PUT"])
 @jwt_required()
 def update_property(property_id):
     try:
@@ -177,7 +177,7 @@ def update_property(property_id):
         current_app.logger.error(f"Error updating property {property_id}: {e}")
         return jsonify({"error": "Failed to update property"}), 500
 
-@api.route("/delete-property/<int:property_id>", methods=["DELETE"])
+@api.route("/delete-property/<uuid:property_id>", methods=["DELETE"])
 @jwt_required()
 def delete_property(property_id):
     try:
@@ -199,7 +199,7 @@ def get_properties():
         current_app.logger.error(f"Error fetching properties: {e}")
         return jsonify({"error": "Failed to fetch properties", "details": str(e)}), 500
     
-@api.route('/property-detail/<int:property_id>', methods=['GET'])
+@api.route('/property-detail/<uuid:property_id>', methods=['GET'])
 @jwt_required()
 def property_detail(property_id):
     try:
@@ -230,7 +230,7 @@ def create_lease():
         current_app.logger.error(f"Error creating lease: {e}", exc_info=True)
         return jsonify({"message": "Failed to create lease", "details": str(e)}), 500
     
-@api.route("/update-lease/<int:lease_id>", methods=["PUT"])
+@api.route("/update-lease/<uuid:lease_id>", methods=["PUT"])
 @jwt_required()
 def update_lease(lease_id):
     try:
@@ -241,7 +241,7 @@ def update_lease(lease_id):
         current_app.logger.error(f"Error updating lease {lease_id}: {e}", exc_info=True)
         return jsonify({"message": "Failed to update lease", "details": str(e)}), 500
     
-@api.route("/delete-lease/<int:lease_id>", methods=["DELETE"])
+@api.route("/delete-lease/<uuid:lease_id>", methods=["DELETE"])
 @jwt_required()
 def delete_lease(lease_id):
     try:
@@ -265,7 +265,7 @@ def get_all_leases():
         return jsonify({"message": "Internal server error"}), 500
 
 
-@api.route("/lease-detail/<int:lease_id>", methods=["GET"])
+@api.route("/lease-detail/<uuid:lease_id>", methods=["GET"])
 @jwt_required()
 def get_lease_detail(lease_id):
     try:
@@ -306,7 +306,7 @@ def get_payments():
         return jsonify({"message": "Failed to fetch payments", "details": str(e)}), 500
 
 
-@api.route("/payment-detail/<int:payment_id>", methods=["GET"])
+@api.route("/payment-detail/<uuid:payment_id>", methods=["GET"])
 @jwt_required()
 def get_payment_detail(payment_id):
     try:

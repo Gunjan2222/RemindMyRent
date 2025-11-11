@@ -881,14 +881,22 @@ class RentPaymentController:
         try:
             tenant_id = self.data.get("tenant_id")
             property_id = self.data.get("property_id")
-            amount = self.data.get("amount")
             payment_mode = self.data.get("payment_mode", "Cash")
             status = self.data.get("status", "pending")
             transaction_reference = self.data.get("transaction_reference")
 
+            # Validate amount
+            try:
+                amount = float(self.data.get("amount", 0))
+            except (ValueError, TypeError):
+                return jsonify({"message": "Amount must be a valid number"}), 400
+
+            if amount <= 0:
+                return jsonify({"message": "Amount must be greater than zero"}), 400
+
             # Validate required fields
-            if not all([tenant_id, property_id, amount]):
-                return jsonify({"message": "tenant_id, property_id, and amount are required"}), 400
+            if not all([tenant_id, property_id]):
+                return jsonify({"message": "tenant_id and property_id are required"}), 400
 
             # Verify ownership
             tenant = Tenant.query.filter_by(id=tenant_id, user_id=self.user_id).first()
@@ -910,7 +918,7 @@ class RentPaymentController:
             start_date = date(today.year, today.month, 1)
             end_date = date(today.year, today.month, monthrange(today.year, today.month)[1])
 
-            # Check if payment exists
+            # Check if payment exists for current month
             existing_payment = RentPayment.query.filter(
                 RentPayment.tenant_id == tenant_id,
                 RentPayment.property_id == property_id,
@@ -918,7 +926,7 @@ class RentPaymentController:
                 RentPayment.payment_date <= end_date
             ).first()
 
-            # Auto mark late if unpaid after due
+            # Auto mark late if unpaid after due date
             rent_due_date = date(today.year, today.month, min(due_day, end_date.day))
             if status != "paid" and today > rent_due_date:
                 status = "late"
@@ -930,7 +938,11 @@ class RentPaymentController:
                 existing_payment.status = status
                 existing_payment.updated_date = datetime.utcnow()
                 db.session.commit()
-                return jsonify({"message": "Payment updated successfully", "payment_id": existing_payment.id}), 200
+                return jsonify({
+                    "success": True,
+                    "message": "Payment updated successfully",
+                    "payment_id": existing_payment.id
+                }), 200
 
             new_payment = RentPayment(
                 tenant_id=tenant_id,
@@ -939,16 +951,27 @@ class RentPaymentController:
                 payment_date=today,
                 payment_mode=payment_mode,
                 status=status,
-                transaction_reference=transaction_reference
+                transaction_reference=transaction_reference,
+                created_date=datetime.utcnow(),
+                updated_date=datetime.utcnow()
             )
             db.session.add(new_payment)
             db.session.commit()
-            return jsonify({"message": "Payment recorded successfully", "payment_id": new_payment.id}), 201
+
+            return jsonify({
+                "success": True,
+                "message": "Payment recorded successfully",
+                "payment_id": new_payment.id
+            }), 201
 
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error adding/updating payment: {e}", exc_info=True)
-            return jsonify({"message": "Failed to add or update payment", "details": str(e)}), 500
+            return jsonify({
+                "success": False,
+                "message": "Failed to add or update payment",
+                "details": str(e)
+            }), 500
 
     def get_payments(self):
         try:
