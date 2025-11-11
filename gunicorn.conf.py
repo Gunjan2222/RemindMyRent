@@ -3,7 +3,7 @@
 import multiprocessing
 
 # ✅ Entry point for your app factory
-wsgi_app = "app:create_app()"
+wsgi_app = "app:create_app"
 
 # ✅ Bind to all network interfaces on Render's port
 bind = "0.0.0.0:10000"
