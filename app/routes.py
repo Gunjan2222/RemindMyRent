@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_tok
 from app import db, mail
 from app.config import Config
 from app.tasks import send_rent_notifications_task, test_celery_task
-from app.utils.controller import AuthController, TenantController, PropertyController, LeaseController, RentPaymentController, RentReminderController, ProfileController
+from app.utils.controller import AuthController, TenantController, PropertyController, PaymentController, DashboardController, ProfileController
 
 api = Blueprint("api", __name__)
 
@@ -15,16 +15,16 @@ api = Blueprint("api", __name__)
 def health():
     return jsonify({"status": "ok", "message": "Rent Management API running"}), 200
 
-@api.route('/test-celery', methods=['GET'])
-def test_celery():
-    """
-    Manually trigger a test Celery task to verify worker and Redis connection.
-    """
-    task = test_celery_task.delay()
-    return jsonify({
-        "message": "Celery test task triggered!",
-        "task_id": task.id
-    }), 202
+# @api.route('/test-celery', methods=['GET'])
+# def test_celery():
+#     """
+#     Manually trigger a test Celery task to verify worker and Redis connection.
+#     """
+#     task = test_celery_task.delay()
+#     return jsonify({
+#         "message": "Celery test task triggered!",
+#         "task_id": task.id
+#     }), 202
 
 @api.route("/register", methods=["POST"])
 def register():
@@ -225,162 +225,6 @@ def property_detail(property_id):
         current_app.logger.error(f"Error fetching property details: {e}")
         return jsonify({"error": "Failed to fetch property details"}), 500
 
-# ---------------------
-# Lease Routes
-# ---------------------
-
-@api.route("/add-lease", methods=["POST"])
-@jwt_required()
-def create_lease():
-    try:
-        leases = LeaseController()
-        result = leases.add_lease()
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error creating lease: {e}", exc_info=True)
-        return jsonify({"message": "Failed to create lease", "details": str(e)}), 500
-    
-@api.route("/update-lease/<uuid:lease_id>", methods=["PUT"])
-@jwt_required()
-def update_lease(lease_id):
-    try:
-        leases = LeaseController()
-        result = leases.update_lease(lease_id)
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error updating lease {lease_id}: {e}", exc_info=True)
-        return jsonify({"message": "Failed to update lease", "details": str(e)}), 500
-    
-@api.route("/delete-lease/<uuid:lease_id>", methods=["DELETE"])
-@jwt_required()
-def delete_lease(lease_id):
-    try:
-        leases = LeaseController()
-        result = leases.delete_lease(lease_id)
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error deleting lease {lease_id}: {e}", exc_info=True)
-        return jsonify({"message": "Failed to delete lease", "details": str(e)}), 500
-    
-
-@api.route("/leases", methods=["GET"])
-@jwt_required()
-def get_all_leases():
-    try:
-        leases = LeaseController()
-        result = leases.get_all_leases()
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error fetching all leases: {e}", exc_info=True)
-        return jsonify({"message": "Internal server error"}), 500
-
-
-@api.route("/lease-detail/<uuid:lease_id>", methods=["GET"])
-@jwt_required()
-def get_lease_detail(lease_id):
-    try:
-        leases = LeaseController()
-        result = leases.get_lease_detail(lease_id)
-        if not result:
-            return jsonify({"message": "Lease not found"}), 404
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error fetching lease detail for ID {lease_id}: {e}", exc_info=True)
-        return jsonify({"message": "Internal server error"}), 500
-
-# ---------------------
-# Payments Routes
-# ---------------------
-
-@api.route("/add-payment", methods=["POST"])
-@jwt_required()
-def add_payment():
-    try:
-        payments = RentPaymentController()
-        result = payments.add_payment()
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error in add_payment: {str(e)}", exc_info=True)
-        return jsonify({"message": "Failed to add payment", "details": str(e)}), 500
-
-
-@api.route("/payments", methods=["GET"])
-@jwt_required()
-def get_payments():
-    try:
-        payments = RentPaymentController()
-        result = payments.get_payments()
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error in get_payments: {str(e)}", exc_info=True)
-        return jsonify({"message": "Failed to fetch payments", "details": str(e)}), 500
-
-
-@api.route("/payment-detail/<uuid:payment_id>", methods=["GET"])
-@jwt_required()
-def get_payment_detail(payment_id):
-    try:
-        payments = RentPaymentController()
-        result = payments.get_payment_detail(payment_id)
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error in get_payment_detail (ID: {payment_id}): {str(e)}", exc_info=True)
-        return jsonify({"message": "Failed to fetch payment detail", "details": str(e)}), 500
-
-
-# ---------------------
-# Reminders Routes
-# ---------------------
-
-
-@api.route("/reminders", methods=["GET"])
-@jwt_required()
-def get_reminders():
-    try:
-        reminders = RentReminderController()
-        result = reminders.get_reminders()
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error in get_reminders: {str(e)}")
-        return jsonify({"message": "Internal server error while fetching reminders"}), 500
-
-
-@api.route("/reminders/upcoming", methods=["GET"])
-@jwt_required()
-def get_upcoming_reminders():
-    try:
-        reminders = RentReminderController()
-        result = reminders.get_upcoming_reminders()
-        return result
-    except Exception as e:
-        current_app.logger.error(f"Error in get_upcoming_reminders: {str(e)}")
-        return jsonify({"message": "Internal server error while fetching upcoming reminders"}), 500
-
-
-@api.route("/reminders/send-today", methods=["POST"])
-@jwt_required()
-def trigger_today_reminders():
-    """Manually trigger rent reminder notifications for today."""
-    try:
-        task = send_rent_notifications_task.delay()
-        return jsonify({"message": "Reminder task queued successfully", "task_id": task.id}), 202
-    except Exception as e:
-        current_app.logger.error(f"Error triggering reminder task: {e}", exc_info=True)
-        return jsonify({"message": "Failed to trigger reminder task", "details": str(e)}), 500
-
-@api.route("/dashboard/stats", methods=["GET"])
-@jwt_required()
-def stats():
-    try:
-        con = RentReminderController()
-        response = con.get_dashboard_stats()
-        return response
-    except Exception as e:
-        current_app.logger.error(f"Error fetching dashboard stats: {e}", exc_info=True)
-        return jsonify({
-            "message": "Internal server error while fetching dashboard stats",
-            "details": str(e)
-        }), 500
 
 @api.route("/profile", methods=["GET", "PUT"])
 @jwt_required()
@@ -406,3 +250,86 @@ def change_pass():
     except Exception as e:
         current_app.logger.error(f"Error in change password: {str(e)}")
         return jsonify({"message": "Internal server error while changing password"}), 500
+    
+
+@api.route("/pending/summary", methods=["GET"])
+@jwt_required()
+def pending_summary():
+    try:
+        controller = PaymentController()
+        response = controller.get_pending_summary()
+        return response
+    except Exception as e:
+        current_app.logger.error(
+            f"Pending summary API failed: {e}", exc_info=True
+        )
+        return jsonify({"message": "Internal server error"}), 500
+    
+
+@api.route("/tenant/<tenant_id>", methods=["GET"])
+@jwt_required()
+def tenant_payments(tenant_id):
+    try:
+        controller = PaymentController()
+        return controller.get_tenant_payments(tenant_id)
+    except Exception as e:
+        current_app.logger.error(
+            f"Tenant payments API failed: {e}", exc_info=True
+        )
+        return jsonify({"message": "Internal server error"}), 500
+    
+
+@api.route("/<payment_id>/pay", methods=["POST"])
+@jwt_required()
+def mark_payment_paid(payment_id):
+    try:
+        controller = PaymentController()
+        return controller.mark_payment_paid(payment_id)
+    except Exception as e:
+        current_app.logger.error(
+            f"Mark payment paid API failed: {e}", exc_info=True
+        )
+        return jsonify({"message": "Internal server error"}), 500
+    
+
+@api.route("/summary", methods=["GET"])
+@jwt_required()
+def dashboard_summary():
+    try:
+        controller = DashboardController()
+        return controller.get_dashboard_summary()
+    except Exception as e:
+        current_app.logger.error(
+            f"Dashboard summary API failed: {e}", exc_info=True
+        )
+        return jsonify({"message": "Internal server error"}), 500
+    
+
+@api.route("/overdue", methods=["GET"])
+@jwt_required()
+def overdue_payments():
+    try:
+        controller = DashboardController()
+        return controller.get_overdue_payments()
+    except Exception as e:
+        current_app.logger.error(
+            f"Overdue payments API failed: {e}", exc_info=True
+        )
+        return jsonify({"message": "Internal server error"}), 500
+    
+
+@api.route("/payments", methods=["GET"])
+@jwt_required()
+def monthly_payments():
+    try:
+        controller = DashboardController()
+        return controller.get_monthly_payments()
+    except Exception as e:
+        current_app.logger.error(
+            f"Monthly payments API failed: {e}", exc_info=True
+        )
+        return jsonify({"message": "Internal server error"}), 500
+
+
+
+
