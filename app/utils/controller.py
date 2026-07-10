@@ -1,13 +1,13 @@
 from app.models import User, PasswordResetToken , Tenant, Property, Payment
-from app.utils.helper import AuthHelper, TwilioHelper
+from app.utils.helper import AuthHelper
 from app import db, mail
 from flask_mail import Message
 from flask import Blueprint, request, jsonify, url_for, current_app
 import secrets, re
 from datetime import datetime, timedelta, date
 from flask_jwt_extended import get_jwt_identity
-from re import match
-from calendar import monthrange, month_abbr
+from app.models import PaymentStatus
+from calendar import monthrange
 
 class AuthController:
 
@@ -40,7 +40,13 @@ class AuthController:
             if not re.match(r"^(?:\+91|0)?[6-9]\d{9}$", contact):
                 return jsonify({"error": "Invalid phone number format"}), 400
 
-            if len(password) < 8 or not any(c.isupper() for c in password) or not any(c.isdigit() for c in password):
+            if (
+                len(password) < 8
+                or not any(c.isupper() for c in password)
+                or not any(c.islower() for c in password)
+                or not any(c.isdigit() for c in password)
+                or not any(not c.isalnum() for c in password)
+            ):
                 return jsonify({
                     "error": "Password must be at least 8 characters long and contain one uppercase letter and one digit"
                 }), 400
@@ -105,9 +111,6 @@ class AuthController:
             if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
                 return jsonify({"error": "Invalid email format"}), 400
 
-            if len(password) < 8:
-                return jsonify({"error": "Invalid email or password"}), 401
-
             # -------- Authentication --------
             user = User.query.filter_by(email=email).first()
             if not user or not self.auth_helper.verify_password(password, user.password):
@@ -134,9 +137,9 @@ class AuthController:
         try:
             self.auth_helper.blacklist_token()
             return jsonify({"message": "Successfully logged out"}), 200
-        except Exception as e:
-            current_app.logger.error(f"Logout error: {e}")
-            return jsonify({"message": "Logout failed", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Logout failed")
+            return jsonify({"message": "Logout failed"}), 500
         
         
     def forgot_password(self):
@@ -206,7 +209,13 @@ class AuthController:
             if not password:
                 return jsonify({"error": "Password is required"}), 400
 
-            if len(password) < 8 or not any(c.isupper() for c in password) or not any(c.isdigit() for c in password):
+            if (
+                len(password) < 8
+                or not any(c.isupper() for c in password)
+                or not any(c.islower() for c in password)
+                or not any(c.isdigit() for c in password)
+                or not any(not c.isalnum() for c in password)
+            ):
                 return jsonify({
                     "error": "Password must be at least 8 characters long and contain one uppercase letter and one digit"
                 }), 400
@@ -236,80 +245,6 @@ class AuthController:
             current_app.logger.error("Reset password failed", exc_info=True)
             return jsonify({"error": "Reset password failed"}), 500
 
-class ProfileController:
-
-    def __init__(self):
-        self.data = request.get_json(silent=True) or request.form
-        self.user_id = get_jwt_identity()
-
-    def get_profile(self):
-        try:
-            user = User.query.get(self.user_id)
-
-            if not user:
-                return jsonify({"error": "User not found"}), 404
-
-            return jsonify({
-                "id": str(user.id),
-                "username": user.username,
-                "email": user.email,
-                "contact": user.contact,
-                "role": user.role,
-                "created_date": user.created_date.isoformat() if user.created_date else None
-            }), 200
-
-        except Exception:
-            current_app.logger.error("Failed to fetch user profile", exc_info=True)
-            return jsonify({"error": "Failed to fetch profile"}), 500
-
-    def update_profile(self):
-        try:
-            user = User.query.get(self.user_id)
-
-            if not user:
-                return jsonify({"error": "User not found"}), 404
-
-            # Update fields safely
-            user.username = self.data.get("username", user.username).strip()
-            user.contact = self.data.get("contact", user.contact).strip()
-
-            db.session.commit()
-
-            return jsonify({"message": "Profile updated successfully"}), 200
-
-        except Exception:
-            db.session.rollback()
-            current_app.logger.error("Failed to update profile", exc_info=True)
-            return jsonify({"error": "Failed to update profile"}), 500
-
-
-    def change_password(self):
-        try:
-            auth_helper = AuthHelper()
-            old_password = self.data.get("old_password")
-            new_password = self.data.get("new_password")
-
-            if not old_password or not new_password:
-                return jsonify({"message": "Old and new password are required"}), 400
-
-            user = User.query.get(self.user_id)
-            if not user:
-                return jsonify({"message": "User not found"}), 404
-
-            if not auth_helper.verify_password(user.password, old_password):
-                return jsonify({"message": "Incorrect old password"}), 400
-
-            user.password = auth_helper.hash_password(new_password)
-            db.session.commit()
-
-            return jsonify({"message": "Password changed successfully"}), 200
-
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error changing password: {e}", exc_info=True)
-            return jsonify({"message": "Failed to change password", "error": str(e)}), 500
-
-        
 class TenantController:
 
     def __init__(self):
@@ -317,32 +252,119 @@ class TenantController:
         self.user_id = get_jwt_identity()
 
     # ---------------- ADD TENANT ----------------
-    # ---------------- ADD TENANT ----------------
     def add_tenant(self):
         try:
-            required_fields = ["name","email", "phone", "property_id", "rent_amount", "due_day"]
-            missing = [f for f in required_fields if not self.data.get(f)]
+            required_fields = [
+                "name",
+                "email",
+                "phone",
+                "property_id",
+                "rent_amount",
+                "due_day"
+            ]
+
+            missing = [
+                field for field in required_fields
+                if not self.data.get(field)
+            ]
+
             if missing:
-                return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+                return jsonify({
+                    "error": f"Missing required fields: {', '.join(missing)}"
+                }), 400
 
-            # Extract fields
-            name = self.data.get("name").strip()
-            email = self.data.get("email").strip()
-            phone = self.data.get("phone").strip()
+            # ---------------- Extract & Clean Data ----------------
+            name = self.data.get("name", "").strip()
+            email = self.data.get("email", "").strip().lower()
+            phone = self.data.get("phone", "").strip()
             property_id = self.data.get("property_id")
-            rent_amount = float(self.data.get("rent_amount"))
-            maintenance_amount = float(self.data.get("maintenance_amount", 0))
-            due_day = int(self.data.get("due_day"))
-            start_date = self.data.get("start_date") or date.today()
 
-            # Validate email
-            if email and not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
-                return jsonify({"error": "Invalid email format"}), 400
+            # ---------------- Validate Name ----------------
+            if len(name) < 3 or len(name) > 100:
+                return jsonify({
+                    "error": "Name must be between 3 and 100 characters."
+                }), 400
 
-            # Validate phone
+            # ---------------- Validate Email ----------------
+            if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
+                return jsonify({
+                    "error": "Invalid email format."
+                }), 400
+
+            # ---------------- Validate Phone ----------------
             if not re.match(r"^(?:\+91|0)?[6-9]\d{9}$", phone):
-                return jsonify({"error": "Invalid phone number format"}), 400
+                return jsonify({
+                    "error": "Invalid phone number format."
+                }), 400
 
+            # ---------------- Validate Numeric Fields ----------------
+            try:
+                rent_amount = float(self.data.get("rent_amount"))
+                maintenance_amount = float(
+                    self.data.get("maintenance_amount", 0)
+                )
+                due_day = int(self.data.get("due_day"))
+            except (ValueError, TypeError):
+                return jsonify({
+                    "error": "Invalid rent amount, maintenance amount or due day."
+                }), 400
+
+            if rent_amount <= 0:
+                return jsonify({
+                    "error": "Rent amount must be greater than zero."
+                }), 400
+
+            if maintenance_amount < 0:
+                return jsonify({
+                    "error": "Maintenance amount cannot be negative."
+                }), 400
+
+            if due_day < 1 or due_day > 31:
+                return jsonify({
+                    "error": "Due day must be between 1 and 31."
+                }), 400
+
+            # ---------------- Parse Start Date ----------------
+            if self.data.get("start_date"):
+                try:
+                    start_date = datetime.strptime(
+                        self.data.get("start_date"),
+                        "%Y-%m-%d"
+                    ).date()
+                except ValueError:
+                    return jsonify({
+                        "error": "Invalid start_date format. Use YYYY-MM-DD."
+                    }), 400
+            else:
+                start_date = date.today()
+
+            # ---------------- Verify Property Ownership ----------------
+            property_obj = Property.query.filter_by(
+                id=property_id,
+                owner_id=self.user_id
+            ).first()
+
+            if not property_obj:
+                return jsonify({
+                    "error": "Property not found or unauthorized."
+                }), 404
+
+            # ---------------- Duplicate Tenant Check ----------------
+            existing_tenant = Tenant.query.filter(
+                Tenant.property_id == property_id,
+                (
+                    (Tenant.email == email) |
+                    (Tenant.phone == phone)
+                ),
+                Tenant.is_active.is_(True)
+            ).first()
+
+            if existing_tenant:
+                return jsonify({
+                    "error": "A tenant with the same email or phone already exists for this property."
+                }), 400
+
+            # ---------------- Create Tenant ----------------
             tenant = Tenant(
                 name=name,
                 email=email,
@@ -357,78 +379,254 @@ class TenantController:
 
             db.session.add(tenant)
             db.session.commit()
-            return jsonify({"message": "Tenant added successfully", "tenant_id": str(tenant.id)}), 201
+
+            current_app.logger.info(
+                f"Tenant '{tenant.name}' added successfully by user {self.user_id}"
+            )
+
+            return jsonify({
+                "message": "Tenant added successfully.",
+                "tenant": {
+                    "id": str(tenant.id),
+                    "name": tenant.name,
+                    "email": tenant.email,
+                    "phone": tenant.phone,
+                    "property_id": str(tenant.property_id),
+                    "rent_amount": tenant.rent_amount,
+                    "maintenance_amount": tenant.maintenance_amount,
+                    "due_day": tenant.due_day,
+                    "start_date": tenant.start_date.isoformat(),
+                    "is_active": tenant.is_active
+                }
+            }), 201
 
         except Exception:
             db.session.rollback()
-            current_app.logger.error("Failed to add tenant", exc_info=True)
-            return jsonify({"error": "Failed to add tenant"}), 500
+            current_app.logger.exception("Failed to add tenant")
+            return jsonify({
+                "error": "Failed to add tenant."
+            }), 500
 
 
     # ---------------- UPDATE TENANT ----------------
+    
     def update_tenant(self, tenant_id):
         try:
-            tenant = Tenant.query.filter_by(id=tenant_id, is_active=True).first()
+            tenant = (
+                Tenant.query
+                .join(Property)
+                .filter(
+                    Tenant.id == tenant_id,
+                    Property.owner_id == self.user_id
+                )
+                .first()
+            )
+
             if not tenant:
-                return jsonify({"error": "Tenant not found"}), 404
+                return jsonify({
+                    "error": "Tenant not found or unauthorized."
+                }), 404
 
-            # Update fields if provided
-            name = self.data.get("name")
-            email = self.data.get("email")
-            phone = self.data.get("phone")
-            rent_amount = self.data.get("rent_amount")
-            maintenance_amount = self.data.get("maintenance_amount")
-            due_day = self.data.get("due_day")
-            start_date = self.data.get("start_date")
-            is_active = self.data.get("is_active")
+            # ---------------- Name ----------------
+            if "name" in self.data:
+                name = self.data.get("name", "").strip()
 
-            if name:
-                tenant.name = name.strip()
-            if email is not None:
-                if email and not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
-                    return jsonify({"error": "Invalid email format"}), 400
-                tenant.email = email.strip() if email else None
-            if phone is not None:
-                if phone and not re.match(r"^(?:\+91|0)?[6-9]\d{9}$", phone):
-                    return jsonify({"error": "Invalid phone number format"}), 400
-                tenant.phone = phone.strip() if phone else tenant.phone
-            if rent_amount is not None:
-                tenant.rent_amount = float(rent_amount)
-            if maintenance_amount is not None:
-                tenant.maintenance_amount = float(maintenance_amount)
-            if due_day is not None:
-                tenant.due_day = int(due_day)
-            if start_date is not None:
-                tenant.start_date = start_date
-            if is_active is not None:
-                tenant.is_active = bool(is_active)
+                if len(name) < 3 or len(name) > 100:
+                    return jsonify({
+                        "error": "Name must be between 3 and 100 characters."
+                    }), 400
+
+                tenant.name = name
+
+            # ---------------- Email ----------------
+            if "email" in self.data:
+                email = self.data.get("email", "").strip().lower()
+
+                if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
+                    return jsonify({
+                        "error": "Invalid email format."
+                    }), 400
+
+                existing = Tenant.query.filter(
+                    Tenant.email == email,
+                    Tenant.id != tenant.id,
+                    Tenant.property_id == tenant.property_id,
+                    Tenant.is_active.is_(True)
+                ).first()
+
+                if existing:
+                    return jsonify({
+                        "error": "Email already exists for another tenant."
+                    }), 400
+
+                tenant.email = email
+
+            # ---------------- Phone ----------------
+            if "phone" in self.data:
+                phone = self.data.get("phone", "").strip()
+
+                if not re.match(r"^(?:\+91|0)?[6-9]\d{9}$", phone):
+                    return jsonify({
+                        "error": "Invalid phone number."
+                    }), 400
+
+                existing = Tenant.query.filter(
+                    Tenant.phone == phone,
+                    Tenant.id != tenant.id,
+                    Tenant.property_id == tenant.property_id,
+                    Tenant.is_active.is_(True)
+                ).first()
+
+                if existing:
+                    return jsonify({
+                        "error": "Phone number already exists for another tenant."
+                    }), 400
+
+                tenant.phone = phone
+
+            # ---------------- Rent Amount ----------------
+            if "rent_amount" in self.data:
+                try:
+                    rent_amount = float(self.data.get("rent_amount"))
+
+                    if rent_amount <= 0:
+                        return jsonify({
+                            "error": "Rent amount must be greater than zero."
+                        }), 400
+
+                    tenant.rent_amount = rent_amount
+
+                except (ValueError, TypeError):
+                    return jsonify({
+                        "error": "Invalid rent amount."
+                    }), 400
+
+            # ---------------- Maintenance Amount ----------------
+            if "maintenance_amount" in self.data:
+                try:
+                    maintenance = float(self.data.get("maintenance_amount"))
+
+                    if maintenance < 0:
+                        return jsonify({
+                            "error": "Maintenance amount cannot be negative."
+                        }), 400
+
+                    tenant.maintenance_amount = maintenance
+
+                except (ValueError, TypeError):
+                    return jsonify({
+                        "error": "Invalid maintenance amount."
+                    }), 400
+
+            # ---------------- Due Day ----------------
+            if "due_day" in self.data:
+                try:
+                    due_day = int(self.data.get("due_day"))
+
+                    if due_day < 1 or due_day > 31:
+                        return jsonify({
+                            "error": "Due day must be between 1 and 31."
+                        }), 400
+
+                    tenant.due_day = due_day
+
+                except (ValueError, TypeError):
+                    return jsonify({
+                        "error": "Invalid due day."
+                    }), 400
+
+            # ---------------- Start Date ----------------
+            if "start_date" in self.data:
+                try:
+                    tenant.start_date = datetime.strptime(
+                        self.data.get("start_date"),
+                        "%Y-%m-%d"
+                    ).date()
+                except ValueError:
+                    return jsonify({
+                        "error": "Invalid start_date format. Use YYYY-MM-DD."
+                    }), 400
+
+            # ---------------- Active Status ----------------
+            if "is_active" in self.data:
+                value = str(self.data.get("is_active")).lower()
+
+                if value in ["true", "1", "yes"]:
+                    tenant.is_active = True
+                elif value in ["false", "0", "no"]:
+                    tenant.is_active = False
+                else:
+                    return jsonify({
+                        "error": "Invalid value for is_active."
+                    }), 400
 
             db.session.commit()
-            return jsonify({"message": "Tenant updated successfully"}), 200
+
+            current_app.logger.info(
+                f"Tenant {tenant.id} updated successfully by user {self.user_id}"
+            )
+
+            return jsonify({
+                "message": "Tenant updated successfully.",
+                "tenant": {
+                    "id": str(tenant.id),
+                    "name": tenant.name,
+                    "email": tenant.email,
+                    "phone": tenant.phone,
+                    "rent_amount": tenant.rent_amount,
+                    "maintenance_amount": tenant.maintenance_amount,
+                    "due_day": tenant.due_day,
+                    "start_date": tenant.start_date.isoformat() if tenant.start_date else None,
+                    "is_active": tenant.is_active
+                }
+            }), 200
 
         except Exception:
             db.session.rollback()
-            current_app.logger.error("Failed to update tenant", exc_info=True)
-            return jsonify({"error": "Failed to update tenant"}), 500
-
+            current_app.logger.exception("Failed to update tenant")
+            return jsonify({
+                "error": "Failed to update tenant."
+            }), 500
 
     # ---------------- DELETE TENANT (SOFT DELETE) ----------------
     def delete_tenant(self, tenant_id):
         try:
-            tenant = Tenant.query.filter_by(id=tenant_id, is_active=True).first()
-            if not tenant:
-                return jsonify({"error": "Tenant not found"}), 404
+            tenant = (
+                Tenant.query
+                .join(Property)
+                .filter(
+                    Tenant.id == tenant_id,
+                    Tenant.is_active.is_(True),
+                    Property.owner_id == self.user_id
+                )
+                .first()
+            )
 
-            # Soft delete
+            if not tenant:
+                return jsonify({
+                    "error": "Tenant not found or unauthorized."
+                }), 404
+
+            # Soft Delete
             tenant.is_active = False
+
             db.session.commit()
 
-            return jsonify({"message": "Tenant marked as inactive"}), 200
+            current_app.logger.info(
+                f"Tenant {tenant.id} marked inactive by user {self.user_id}"
+            )
+
+            return jsonify({
+                "message": "Tenant deleted successfully."
+            }), 200
 
         except Exception:
             db.session.rollback()
-            current_app.logger.error("Failed to delete tenant", exc_info=True)
-            return jsonify({"error": "Failed to delete tenant"}), 500
+            current_app.logger.exception("Failed to delete tenant")
+            return jsonify({
+                "error": "Failed to delete tenant."
+            }), 500
+        
 
     # ---------------- GET ALL TENANTS ----------------
     def get_all_tenants(self):
@@ -459,7 +657,7 @@ class TenantController:
                 )
 
             # --- Pagination ---
-            pagination = query.order_by(Tenant.created_date.desc()).paginate(
+            pagination = query.order_by(Tenant.created_at.desc()).paginate(
                 page=page, per_page=per_page, error_out=False
             )
             tenants = pagination.items
@@ -478,8 +676,8 @@ class TenantController:
                     "due_day": t.due_day,
                     "start_date": t.start_date.isoformat() if t.start_date else None,
                     "is_active": t.is_active,
-                    "created_date": t.created_date.isoformat() if t.created_date else None,
-                    "updated_date": t.updated_date.isoformat() if t.updated_date else None
+                    "created_at": t.created_at.isoformat() if t.created_at else None,
+                    "updated_at": t.updated_at.isoformat() if t.updated_at else None
                 }
                 for t in tenants
             ]
@@ -500,36 +698,47 @@ class TenantController:
     # ---------------- GET TENANT DETAIL ----------------
     def get_tenant_detail(self, tenant_id):
         try:
-            # Fetch tenant belonging to current user's property
-            tenant = Tenant.query.join(Property)\
-                .filter(Tenant.id == tenant_id, Property.owner_id == self.user_id)\
+            tenant = (
+                Tenant.query
+                .join(Property)
+                .filter(
+                    Tenant.id == tenant_id,
+                    Property.owner_id == self.user_id
+                )
                 .first()
+            )
 
             if not tenant:
-                return jsonify({"error": "Tenant not found"}), 404
-
-            # Get related property info
-            property_obj = tenant.property
+                return jsonify({
+                    "error": "Tenant not found or unauthorized."
+                }), 404
 
             return jsonify({
-                "id": str(tenant.id),
-                "name": tenant.name,
-                "email": tenant.email,
-                "phone": tenant.phone,
-                "property_id": str(tenant.property_id),
-                "property_name": property_obj.name if property_obj else None,
-                "rent_amount": tenant.rent_amount,
-                "maintenance_amount": tenant.maintenance_amount,
-                "due_day": tenant.due_day,
-                "start_date": tenant.start_date.isoformat() if tenant.start_date else None,
-                "is_active": tenant.is_active,
-                "created_date": tenant.created_date.isoformat() if tenant.created_date else None,
-                "updated_date": tenant.updated_date.isoformat() if tenant.updated_date else None
+                "tenant": {
+                    "id": str(tenant.id),
+                    "name": tenant.name,
+                    "email": tenant.email,
+                    "phone": tenant.phone,
+                    "rent_amount": tenant.rent_amount,
+                    "maintenance_amount": tenant.maintenance_amount,
+                    "due_day": tenant.due_day,
+                    "start_date": tenant.start_date.isoformat() if tenant.start_date else None,
+                    "is_active": tenant.is_active,
+                    "created_at": tenant.created_at.isoformat() if tenant.created_at else None,
+                    "updated_at": tenant.updated_at.isoformat() if tenant.updated_at else None,
+                    "property": {
+                        "id": str(tenant.property.id),
+                        "name": tenant.property.name,
+                        "address": tenant.property.address
+                    }
+                }
             }), 200
 
         except Exception:
-            current_app.logger.error("Error fetching tenant details", exc_info=True)
-            return jsonify({"error": "Failed to fetch tenant details"}), 500
+            current_app.logger.exception("Failed to fetch tenant details")
+            return jsonify({
+                "error": "Failed to fetch tenant details."
+            }), 500
 
 class PropertyController:
 
@@ -546,10 +755,18 @@ class PropertyController:
             if missing:
                 return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
 
+            name = self.data["name"].strip()
+            address = self.data["address"].strip()
+
+            if len(name) < 3:
+                return jsonify({
+                    "error": "Property name too short"
+                }), 400
+
             new_property = Property(
                 owner_id=self.user_id,
-                name=self.data["name"].strip(),
-                address=self.data["address"].strip()
+                name=name,
+                address=address
             )
 
             db.session.add(new_property)
@@ -596,6 +813,9 @@ class PropertyController:
             prop = Property.query.filter_by(id=property_id, owner_id=self.user_id).first()
             if not prop:
                 return jsonify({"error": "Property not found or unauthorized"}), 404
+            
+            if prop.tenants:
+                return jsonify({"error": "Cannot delete property with active tenants."}), 400
 
             db.session.delete(prop)
             db.session.commit()
@@ -713,7 +933,12 @@ class PropertyController:
             )
             return jsonify({"error": "Internal server error"}), 500
 
+
 class PaymentController:
+
+    def __init__(self):
+        self.data = request.get_json(silent=True) or request.form
+        self.user_id = get_jwt_identity()
 
     def get_pending_summary(self):
         try:
@@ -723,7 +948,7 @@ class PaymentController:
                 .join(Property, Tenant.property_id == Property.id)
                 .filter(
                     Property.owner_id == self.user_id,
-                    Payment.status == "PENDING"
+                    Payment.status == PaymentStatus.PENDING
                 )
                 .all()
             )
@@ -757,9 +982,16 @@ class PaymentController:
         
     def get_tenant_payments(self, tenant_id):
         try:
-            payments = Payment.query.filter_by(
-                tenant_id=tenant_id
-            ).order_by(Payment.month.desc()).all()
+            payments = (
+                Payment.query
+                .join(Tenant)
+                .join(Property)
+                .filter(
+                    Payment.tenant_id == tenant_id,
+                    Property.owner_id == self.user_id
+                )
+                .all()
+            )
 
             return jsonify([
                 {
@@ -794,10 +1026,10 @@ class PaymentController:
             if not payment:
                 return jsonify({"message": "Payment not found"}), 404
 
-            if payment.status == "PAID":
+            if payment.status == PaymentStatus.PAID:
                 return jsonify({"message": "Payment already marked as paid"}), 400
 
-            payment.status = "PAID"
+            payment.status = PaymentStatus.PAID
             payment.paid_on = date.today()
             payment.payment_mode = self.data.get("payment_mode", "Cash")
 
@@ -818,6 +1050,9 @@ class PaymentController:
 
 class DashboardController:
 
+    def __init__(self):
+        self.data = request.get_json(silent=True) or request.form
+        self.user_id = get_jwt_identity()
 
     def get_dashboard_summary(self):
         try:
@@ -846,7 +1081,9 @@ class DashboardController:
                 if p.status == "PAID":
                     total_paid += amount
                 else:
-                    due_date = date(today.year, today.month, p.tenant.due_day)
+                    last_day = monthrange(today.year, today.month)[1]
+                    due_day = min(p.tenant.due_day, last_day)
+                    due_date = date(today.year, today.month, due_day)
                     if today > due_date:
                         overdue += amount
 
@@ -880,7 +1117,7 @@ class DashboardController:
                 .filter(
                     Property.owner_id == self.user_id,
                     Payment.month == month_str,
-                    Payment.status == "PENDING"
+                    Payment.status == PaymentStatus.PENDING
                 )
                 .all()
             )
@@ -888,7 +1125,9 @@ class DashboardController:
             overdue_list = []
 
             for p in payments:
-                due_date = date(today.year, today.month, p.tenant.due_day)
+                last_day = monthrange(today.year, today.month)[1]
+                due_day = min(p.tenant.due_day, last_day)
+                due_date = date(today.year, today.month, due_day)
                 if today > due_date:
                     overdue_list.append({
                         "payment_id": str(p.id),

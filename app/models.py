@@ -30,13 +30,14 @@ class User(db.Model, TimeStamp):
     __tablename__ = "users"
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    username = db.Column(db.String(100), nullable=False)
+    username = db.Column(db.String(100), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     contact = db.Column(db.String(15))
     password = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), default="OWNER")  # OWNER / TENANT
 
     properties = db.relationship("Property", backref="owner", lazy=True, cascade="all, delete-orphan")
+    password_reset_tokens = db.relationship("PasswordResetToken",backref="user",cascade="all, delete-orphan",lazy=True)
 
 
 
@@ -96,7 +97,7 @@ class Property(db.Model, TimeStamp):
     name = db.Column(db.String(120), nullable=False)
     address = db.Column(db.Text, nullable=False)
 
-    owner = db.relationship("User", backref="properties")
+    # owner = db.relationship("User", backref="properties")
 
     tenants = db.relationship("Tenant",backref="property",cascade="all, delete-orphan",lazy=True)
 
@@ -164,18 +165,22 @@ class ReminderLog(db.Model, TimeStamp):
 # ---------------------------
 # Rent Payment
 # ---------------------------
+class PaymentStatus(enum.Enum):
+    PENDING = "PENDING"
+    PAID = "PAID"
 
 class Payment(db.Model, TimeStamp):
     __tablename__ = "payments"
+    __table_args__ = (db.UniqueConstraint("tenant_id","month",name="uq_tenant_month"),)
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = db.Column(UUID(as_uuid=True), db.ForeignKey("tenants.id"), nullable=False)
 
     month = db.Column(db.String(7), nullable=False)  # 2026-01
-    rent_amount = db.Column(db.Float, nullable=False)
-    maintenance_amount = db.Column(db.Float, default=0.0)
+    rent_amount = db.Column(db.Numeric(10, 2),nullable=False)
+    maintenance_amount = db.Column(db.Numeric(10, 2), default=0.0)
 
-    status = db.Column(db.String(20), default="PENDING")  
+    status = db.Column(Enum(PaymentStatus),default=PaymentStatus.PENDING)
     paid_on = db.Column(db.Date)
     payment_mode = db.Column(db.String(50))  # Cash / UPI / Bank
 
@@ -185,6 +190,7 @@ class Payment(db.Model, TimeStamp):
         cascade="all, delete-orphan",
         lazy=True
     )
+    
 
 # class RentPayment(db.Model, TimeStamp):
 #     __tablename__ = "rent_payments"

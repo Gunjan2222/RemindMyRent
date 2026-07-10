@@ -17,8 +17,8 @@ from app import mail
 class AuthHelper:
     def __init__(self):
         self.secret_key = Config.JWT_SECRET_KEY
-        self.access_expires = timedelta(minutes=Config.JWT_ACCESS_TOKEN_EXPIRES)
-        self.refresh_expires = timedelta(days=Config.JWT_REFRESH_TOKEN_EXPIRES)
+        self.access_expires = Config.JWT_ACCESS_TOKEN_EXPIRES
+        self.refresh_expires = Config.JWT_REFRESH_TOKEN_EXPIRES
         self.token_blacklist = TokenBlacklist()
 
     def hash_password(self, password):
