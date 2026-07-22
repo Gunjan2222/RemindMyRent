@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, current_app
+from app import db
 from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token, get_jwt
 # from app.tasks import send_rent_notifications_task, test_celery_task
 from app.utils.controller import AuthController, TenantController, PropertyController, PaymentController, DashboardController
@@ -11,6 +12,7 @@ api = Blueprint("api", __name__)
 
 @api.route("/")
 def health():
+    db.create_all()
     return jsonify({"status": "ok", "message": "Rent Management API running"}), 200
 
 # @api.route('/test-celery', methods=['GET'])
