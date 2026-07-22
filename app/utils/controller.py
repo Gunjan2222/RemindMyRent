@@ -86,7 +86,7 @@ class AuthController:
                     recipients=[email],
                     body=body
                 )
-                mail.send(msg)
+                # mail.send(msg)
                 print("Sending WhatsApp to:", contact)
                 # twilio.send_whatsapp(contact, body)
             except Exception:
