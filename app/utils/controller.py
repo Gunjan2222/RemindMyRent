@@ -296,6 +296,26 @@ class AuthController:
 
             return jsonify({"message": "Failed to change password"}), 500
 
+# from flask_mail import Message
+
+# msg = Message(
+#     subject="Welcome to Remind My Rent",
+#     recipients=[tenant.email]
+# )
+
+# msg.body = f"""
+# Hello {tenant.name},
+
+# You have been added as a tenant for {property_obj.name}.
+
+# Rent Amount: ₹{rent_amount}
+# Maintenance Amount: ₹{maintenance_amount}
+# Due Date: {due_day}
+
+# Thank you.
+# """
+
+# mail.send(msg)
 class TenantController:
 
     def __init__(self):
@@ -309,7 +329,7 @@ class TenantController:
                 "name",
                 "email",
                 "phone",
-                "property_id",
+                "property_name",
                 "rent_amount",
                 "due_day"
             ]
@@ -328,7 +348,8 @@ class TenantController:
             name = self.data.get("name", "").strip()
             email = self.data.get("email", "").strip().lower()
             phone = self.data.get("phone", "").strip()
-            property_id = self.data.get("property_id")
+            property_name = self.data.get("property_name")
+
 
             # ---------------- Validate Name ----------------
             if len(name) < 3 or len(name) > 100:
@@ -391,7 +412,7 @@ class TenantController:
 
             # ---------------- Verify Property Ownership ----------------
             property_obj = Property.query.filter_by(
-                id=property_id,
+                name=property_name,
                 owner_id=self.user_id
             ).first()
 
@@ -402,7 +423,7 @@ class TenantController:
 
             # ---------------- Duplicate Tenant Check ----------------
             existing_tenant = Tenant.query.filter(
-                Tenant.property_id == property_id,
+                Tenant.property_id == property_obj.id,
                 (
                     (Tenant.email == email) |
                     (Tenant.phone == phone)
@@ -420,7 +441,7 @@ class TenantController:
                 name=name,
                 email=email,
                 phone=phone,
-                property_id=property_id,
+                property_id=property_obj.id,
                 rent_amount=rent_amount,
                 maintenance_amount=maintenance_amount,
                 due_day=due_day,
