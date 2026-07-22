@@ -12,7 +12,7 @@ from app.utils.token_blacklist import TokenBlacklist
 from app.config import Config
 from flask_mail import Message
 from app import mail
-
+from twilio.rest import Client
 
 class AuthHelper:
     def __init__(self):
@@ -121,28 +121,28 @@ class EmailHelper:
 
 
 
-# class TwilioHelper:
-#     def __init__(self):
-#         try:
-#             self.client = Client(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN)
-#             self.from_number = Config.TWILIO_PHONE_NUMBER
-#             self.whatsapp_number = Config.TWILIO_WHATSAPP_NUMBER
-#             if not self.from_number:
-#                 raise ValueError("Twilio 'from' phone number is not configured.")
-#         except Exception as e:
-#             current_app.logger.error(f"Error initializing Twilio client: {e}")
-#             raise
+class TwilioHelper:
+    def __init__(self):
+        try:
+            self.client = Client(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN)
+            self.from_number = Config.TWILIO_PHONE_NUMBER
+            self.whatsapp_number = Config.TWILIO_WHATSAPP_NUMBER
+            if not self.from_number:
+                raise ValueError("Twilio 'from' phone number is not configured.")
+        except Exception as e:
+            current_app.logger.error(f"Error initializing Twilio client: {e}")
+            raise
 
-#     def send_sms(self, to, message, tenant_id=None, landlord_id=None):
-#         try:
-#             if not to or not message:
-#                 raise ValueError("Recipient number and message cannot be empty.")
-#             response = self.client.messages.create(body=message, from_=self.from_number, to=to)
-#             current_app.logger.info(f"SMS sent to {to}, SID: {response.sid}")
+    def send_sms(self, to, message, tenant_id=None, landlord_id=None):
+        try:
+            if not to or not message:
+                raise ValueError("Recipient number and message cannot be empty.")
+            response = self.client.messages.create(body=message, from_=self.from_number, to=to)
+            current_app.logger.info(f"SMS sent to {to}, SID: {response.sid}")
 
-#         except Exception as e:
-#             current_app.logger.error(f"Error sending SMS to {to}: {e}", exc_info=True)
-#             raise
+        except Exception as e:
+            current_app.logger.error(f"Error sending SMS to {to}: {e}", exc_info=True)
+            raise
 
 #     def send_welcome_message(self, to, name, tenant_id=None):
 #         try:
@@ -154,18 +154,19 @@ class EmailHelper:
 #             current_app.logger.error(f"Error sending welcome message to {to}: {e}", exc_info=True)
 #             raise
 
-#     def send_whatsapp(self, to_number, message, tenant_id=None):
+    def send_whatsapp(self, to_number, message, tenant_id=None):
 
-#         response = self.client.messages.create(body=message, from_= self.whatsapp_number, to='whatsapp:'+ to_number)
-#         # msg = client.messages.create(
-#         #     body=message,
-#         #     from_='whatsapp:' + current_app.config['TWILIO_WHATSAPP_NUMBER'],
-#         #     to='whatsapp:' + to_number
-#         # )
+        # response = self.client.messages.create(body=message, from_= self.whatsapp_number, to='whatsapp:'+ to_number)
+        msg = self.client.messages.create(
+            body=message,
+            from_= self.whatsapp_number,
+            to=f"whatsapp:+91{to_number}"
+        )
+        print(f"whatsapp:+91{to_number}")
 
-#         # Log notification
-#         # log_notification(tenant_id=tenant_id, message=message, notification_type="WhatsApp", status="sent")
-#         return response.sid
+        # Log notification
+        # log_notification(tenant_id=tenant_id, message=message, notification_type="WhatsApp", status="sent")
+        return msg.body
 
 
 # def log_notification(tenant_id, message, notification_type="SMS", status="pending", landlord_id=None):

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date
 from flask_jwt_extended import get_jwt_identity
 from app.models import PaymentStatus
 from calendar import monthrange
+from app.utils.helper import TwilioHelper
 
 class AuthController:
 
@@ -17,6 +18,7 @@ class AuthController:
     
     def register(self):
         try:
+            twilio = TwilioHelper()
             data = self.data
 
             username = data.get("username", "").strip()
@@ -53,7 +55,6 @@ class AuthController:
 
             # -------- Uniqueness Checks --------
             if User.query.filter(
-                (User.username == username) |
                 (User.email == email) |
                 (User.contact == contact)
             ).first():
@@ -79,12 +80,15 @@ class AuthController:
 
             # -------- Send Welcome Email (Non-blocking) --------
             try:
+                body = f"Hello {username},\n\nWelcome to RemindMyRent!"
                 msg = Message(
                     "Welcome to RemindMyRent!",
                     recipients=[email],
-                    body=f"Hello {username},\n\nWelcome to RemindMyRent!"
+                    body=body
                 )
                 mail.send(msg)
+                print("Sending WhatsApp to:", contact)
+                twilio.send_whatsapp(contact, body)
             except Exception:
                 current_app.logger.warning(
                     f"Welcome email failed for {email}",
@@ -144,7 +148,7 @@ class AuthController:
         
     def forgot_password(self):
         try:
-            email = (self.data.get("email") or "").strip()
+            email = (self.data.get("email") or "").strip().lower()
 
             # -------- Validation --------
             if not email:
@@ -244,6 +248,53 @@ class AuthController:
             db.session.rollback()
             current_app.logger.error("Reset password failed", exc_info=True)
             return jsonify({"error": "Reset password failed"}), 500
+        
+    def change_password(self):
+        try:
+            user_id = get_jwt_identity()
+
+            old_password = (self.data.get("old_password") or "").strip()
+            new_password = (self.data.get("new_password") or "").strip()
+
+            if not old_password or not new_password:
+                return jsonify({"message": "Old password and new password are required"}), 400
+
+            if (
+                len(new_password) < 8
+                or not any(c.isupper() for c in new_password)
+                or not any(c.islower() for c in new_password)
+                or not any(c.isdigit() for c in new_password)
+                or not any(not c.isalnum() for c in new_password)
+            ):
+                return jsonify({"message": (
+                        "Password must contain at least 8 characters, "
+                        "one uppercase letter, one lowercase letter, "
+                        "one number and one special character."
+                    )}), 400
+
+            user = User.query.get(user_id)
+
+            if not user:
+                return jsonify({"message": "User not found"}), 404
+
+            if not self.auth_helper.verify_password(old_password,user.password):
+                return jsonify({"message": "Old password is incorrect"}), 400
+
+            if self.auth_helper.verify_password(new_password,user.password):
+                return jsonify({"message": ("New password cannot be the same as ""the old password")}), 400
+
+            user.password = self.auth_helper.hash_password(new_password)
+
+            db.session.commit()
+
+            return jsonify({"message": "Password changed successfully"}), 200
+
+        except Exception:
+            db.session.rollback()
+
+            current_app.logger.exception("Failed to change password")
+
+            return jsonify({"message": "Failed to change password"}), 500
 
 class TenantController:
 
