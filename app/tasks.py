@@ -5,10 +5,6 @@ from datetime import date, timedelta
 from app.utils.helper import EmailHelper
 from calendar import monthrange
 
-@celery.task
-def send_welcome_email_task(email, username):
-    EmailHelper().send_welcome_email(email, username)
-
 @celery.task(bind=True, autoretry_for=(Exception,), retry_kwargs={"max_retries": 3, "countdown": 30})
 def generate_monthly_payments(self):
     try:

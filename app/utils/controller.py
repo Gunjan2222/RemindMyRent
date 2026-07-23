@@ -1,5 +1,5 @@
 from app.models import User, PasswordResetToken , Tenant, Property, Payment
-from app.utils.helper import AuthHelper
+from app.utils.helper import AuthHelper, send_welcome_async
 from app import db, mail
 from flask_mail import Message
 from flask import Blueprint, request, jsonify, url_for, current_app
@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, date
 from flask_jwt_extended import get_jwt_identity
 from app.models import PaymentStatus
 from calendar import monthrange
-from app.tasks import send_welcome_email_task
+from threading import Thread
 # from app.utils.helper import TwilioHelper
 
 class AuthController:
@@ -80,7 +80,11 @@ class AuthController:
             )
 
             # -------- Send Welcome Email --------
-            send_welcome_email_task.delay(email, username)
+            Thread(
+                target=send_welcome_async,
+                args=(email, username),
+                daemon=True
+            ).start()
 
             return jsonify({"message": "User registered successfully"}), 201
 
