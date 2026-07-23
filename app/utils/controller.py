@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date
 from flask_jwt_extended import get_jwt_identity
 from app.models import PaymentStatus
 from calendar import monthrange
+from app.tasks import send_welcome_email_task
 # from app.utils.helper import TwilioHelper
 
 class AuthController:
@@ -78,22 +79,8 @@ class AuthController:
                 f"User registered successfully: {username} ({email})"
             )
 
-            # -------- Send Welcome Email (Non-blocking) --------
-            try:
-                body = f"Hello {username},\n\nWelcome to RemindMyRent!"
-                msg = Message(
-                    "Welcome to RemindMyRent!",
-                    recipients=[email],
-                    body=body
-                )
-                # mail.send(msg)
-                print("Sending WhatsApp to:", contact)
-                # twilio.send_whatsapp(contact, body)
-            except Exception:
-                current_app.logger.warning(
-                    f"Welcome email failed for {email}",
-                    exc_info=True
-                )
+            # -------- Send Welcome Email --------
+            send_welcome_email_task.delay(email, username)
 
             return jsonify({"message": "User registered successfully"}), 201
 

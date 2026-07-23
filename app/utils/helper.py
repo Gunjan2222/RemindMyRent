@@ -118,7 +118,30 @@ class EmailHelper:
 
         mail.send(msg)
 
+    def send_welcome_email(self, email, username):
+        try:
+            body = f"""
+            Hello {username},
 
+            Welcome to RemindMyRent!
+
+            Thank you for registering with us.
+
+            Regards,
+            RemindMyRent Team
+            """
+
+            msg = Message(
+                subject="Welcome to RemindMyRent!",
+                recipients=[email],
+                body=body
+            )
+
+            mail.send(msg)
+
+        except Exception as exc:
+            current_app.logger.exception("Failed to send welcome email")
+            raise self.retry(exc=exc, countdown=30)
 
 
 class TwilioHelper:
