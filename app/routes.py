@@ -15,16 +15,7 @@ def health():
     db.create_all()
     return jsonify({"status": "ok", "message": "Rent Management API running"}), 200
 
-@api.route("/debug-mail")
-def debug_mail():
-
-    return {
-        "MAIL_SERVER": current_app.config.get("MAIL_SERVER"),
-        "MAIL_PORT": current_app.config.get("MAIL_PORT"),
-        "MAIL_USE_TLS": current_app.config.get("MAIL_USE_TLS"),
-        "MAIL_USE_SSL": current_app.config.get("MAIL_USE_SSL"),
-        "MAIL_USERNAME": current_app.config.get("MAIL_USERNAME"),
-    }
+    
 
 # @api.route('/test-celery', methods=['GET'])
 # def test_celery():
