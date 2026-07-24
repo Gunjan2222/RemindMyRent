@@ -15,7 +15,16 @@ def health():
     db.create_all()
     return jsonify({"status": "ok", "message": "Rent Management API running"}), 200
 
-    
+import socket
+
+@api.route("/smtp-test")
+def smtp_test():
+    try:
+        sock = socket.create_connection(("smtp.gmail.com", 587), timeout=10)
+        sock.close()
+        return jsonify({"status": "SMTP reachable"})
+    except Exception as e:
+        return jsonify({"status": "failed", "error": str(e)}), 500   
 
 # @api.route('/test-celery', methods=['GET'])
 # def test_celery():
