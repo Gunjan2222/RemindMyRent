@@ -11,7 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from app.utils.token_blacklist import TokenBlacklist
 from app.config import Config
 from flask_mail import Message
-from app import mail
+from app import mail, app
 from twilio.rest import Client
 
 class AuthHelper:
@@ -143,12 +143,12 @@ class EmailHelper:
             current_app.logger.exception("Failed to send welcome email")
             raise self.retry(exc=exc, countdown=30)
 
-def send_welcome_async(email, username):
-    try:
-        EmailHelper().send_welcome_email(email, username)
-    except Exception as e:
-        print(f"Failed to send welcome email: {e}")
-
+def send_welcome_async(app, email, username):
+    with app.app_context():
+        try:
+            EmailHelper().send_welcome_email(email, username)
+        except Exception as e:
+            app.logger.error(f"Failed to send welcome email: {e}")
 class TwilioHelper:
     def __init__(self):
         try:

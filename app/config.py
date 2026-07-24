@@ -28,12 +28,12 @@ class Config:
     TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER")
     
      # --- JWT ---
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-in-prod")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=1)
     JWT_BLACKLIST_ENABLED = True
     JWT_BLACKLIST_TOKEN_CHECKS = ["access", "refresh"]
 
     # --- FLASK ---
-    SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-prod")
+    SECRET_KEY = os.getenv("SECRET_KEY")
     ENV = os.getenv("FLASK_ENV", "production")

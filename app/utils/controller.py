@@ -60,7 +60,7 @@ class AuthController:
                 (User.contact == contact)
             ).first():
                 return jsonify({
-                    "error": "Username, email, or contact already exists"
+                    "error": "contact already exists"
                 }), 400
 
             # -------- Create User --------
