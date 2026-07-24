@@ -1,5 +1,5 @@
 from app.models import User, PasswordResetToken , Tenant, Property, Payment
-from app.utils.helper import AuthHelper, send_welcome_async
+from app.utils.helper import AuthHelper, send_welcome_notifications_async, send_tenant_notifications_async
 from app import db, mail
 from flask_mail import Message
 from flask import Blueprint, request, jsonify, url_for, current_app
@@ -60,7 +60,7 @@ class AuthController:
                 (User.contact == contact)
             ).first():
                 return jsonify({
-                    "error": "contact already exists"
+                    "error": "email or contact already exists"
                 }), 400
 
             # -------- Create User --------
@@ -79,11 +79,16 @@ class AuthController:
                 f"User registered successfully: {username} ({email})"
             )
 
-            # -------- Send Welcome Email --------
+            # -------- Send Welcome Notification --------
             Thread(
-                target=send_welcome_async,
-                args=(email, username),
-                daemon=True
+                target=send_welcome_notifications_async,
+                args=(
+                    current_app._get_current_object(),
+                    email,
+                    contact,
+                    username,
+                ),
+                daemon=True,
             ).start()
 
             return jsonify({"message": "User registered successfully"}), 201
@@ -287,26 +292,6 @@ class AuthController:
 
             return jsonify({"message": "Failed to change password"}), 500
 
-# from flask_mail import Message
-
-# msg = Message(
-#     subject="Welcome to Remind My Rent",
-#     recipients=[tenant.email]
-# )
-
-# msg.body = f"""
-# Hello {tenant.name},
-
-# You have been added as a tenant for {property_obj.name}.
-
-# Rent Amount: ₹{rent_amount}
-# Maintenance Amount: ₹{maintenance_amount}
-# Due Date: {due_day}
-
-# Thank you.
-# """
-
-# mail.send(msg)
 class TenantController:
 
     def __init__(self):
@@ -446,6 +431,20 @@ class TenantController:
             current_app.logger.info(
                 f"Tenant '{tenant.name}' added successfully by user {self.user_id}"
             )
+
+            # -------- Send tenant added Notification --------
+            Thread(
+                target=send_tenant_notifications_async,
+                args=(
+                    current_app._get_current_object(),
+                    tenant,
+                    property_obj.name,
+                    tenant.rent_amount,
+                    tenant.maintenance_amount,
+                    tenant.due_day,
+                ),
+                daemon=True,
+            ).start()
 
             return jsonify({
                 "message": "Tenant added successfully.",
